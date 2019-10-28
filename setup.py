@@ -27,6 +27,7 @@ setup(
     url="https://github.com/dioph/spotlight",
     packages=["spotlight"],
     ext_modules=[extension],
+    install_requires=['numpy', 'scipy', 'dynesty'],
     classifiers=(
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",

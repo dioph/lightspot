@@ -1,6 +1,9 @@
+import os
+import pickle
 from multiprocessing import Pool
 
-from dynesty import DynamicNestedSampler
+from dynesty import NestedSampler
+from dynesty.utils import merge_runs
 
 from spotlight.priors import *
 from spotlight.utils import *
@@ -124,9 +127,14 @@ class SpotModel(object):
             else:
                 self.fit_names.append(key)
 
+        # number of prior parameters (unit cube)
         self.ndim = 0
         for v in self.parameters.values():
             self.ndim += v.n_inputs
+        # number of loglikelihood parameters (physical)
+        self.N = 12 + 8 * self.nspots + 2 * self.mmax
+
+        self.results = {}
 
     @property
     def parameters(self):
@@ -164,15 +172,16 @@ class SpotModel(object):
         ----------
         t: array-like with shape (n,)
             time samples where the flux function should be evaluated
-        theta: array-like with shape ()
+        theta: array-like with shape (N,)
             full parameter vector (physical units)
 
         Returns
         -------
-        yf: model flux
+        yf: array-like with shape (n,)
+            model flux
         """
         theta = np.asarray(theta)
-        assert theta.size == 12 + self.nspots * 8 + self.mmax * 2, "Parameter vector with wrong size"
+        assert theta.size == self.N, "Parameter vector with wrong size"
         theta_star = theta[:12]
         theta_spot = theta[12:12 + self.nspots * 8].reshape(8, -1)
         theta_inst = theta[12 + self.nspots * 8:].reshape(2, -1)
@@ -184,11 +193,13 @@ class SpotModel(object):
 
         Parameters
         ----------
-        theta: parameter vector
+        theta: array-like with shape (N,)
+            full parameter vector (physical units)
 
         Returns
         -------
-        sse: sum of squared errors weighted by observation uncertainties
+        sse: float
+            sum of squared errors weighted by observation uncertainties
         """
         yf = self.predict(self.t, theta)
         sse = np.sum(np.square((yf - self.y) / self.dy))
@@ -203,11 +214,35 @@ class SpotModel(object):
         nu = self.t.size - self.ndim
         return self.chi(theta) / nu
 
-    def run(self, nlive=1000, cores=1, **kwargs):
-        ndim = 12 + 8 * self.nspots + 2 * self.mmax
-        with Pool(cores) as pool:
-            ds = DynamicNestedSampler(self.loglike, self.sample, ndim, npdim=self.ndim,
-                                      nlive=nlive, pool=pool, queue_size=cores, **kwargs)
-            ds.run_nested()
+    def run(self, nlive=1000, cores=1, filename=None, **kwargs):
+        merge = 'no'
 
-        return ds
+        if filename is not None and os.path.isfile(filename):
+            doit = input(f'There seems to be a file named {filename}.'
+                         'Would you like to run anyway? [y/n]').lower()
+            if doit in ['no', 'n']:
+                with open(filename, 'br') as file:
+                    self.results = pickle.load(file)
+                return
+
+        try:
+            with Pool(cores) as pool:
+                sampler = NestedSampler(self.loglike, self.sample, self.N, npdim=self.ndim,
+                                        nlive=nlive, pool=pool, queue_size=cores, **kwargs)
+                sampler.run_nested()
+        except KeyboardInterrupt:
+            pass
+
+        if filename is not None:
+            merge = input('Merge new run with previous data?').lower()
+
+        if merge in ['no', 'n']:
+            self.results = sampler.results
+        else:
+            with open(filename, 'br') as file:
+                res = pickle.load(file)
+            self.results = merge_runs([sampler.results, res])
+
+        if filename is not None:
+            with open(filename, 'bw') as file:
+                pickle.dump(self.results, file)
