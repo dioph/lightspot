@@ -233,7 +233,7 @@ class SpotModel(object):
         except KeyboardInterrupt:
             pass
 
-        if filename is not None:
+        if filename is not None and os.path.isfile(filename):
             merge = input('Merge new run with previous data?').lower()
 
         if merge in ['no', 'n']:
