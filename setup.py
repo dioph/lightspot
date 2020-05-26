@@ -15,11 +15,22 @@ version = re.search(
     re.M
 ).group(1)
 
+install_requires = [
+    "numpy",
+    "scipy >= 0.19",
+    "dynesty >= 1.0"
+]
+
+extras_require = {
+    "docs": ["jupyter", "numpydoc", "pandoc", "sphinx_rtd_theme"],
+    "test": ["pytest"]
+}
+
 setup(
     name="spotlight",
     version=version,
     author="Eduardo Nunes",
-    author_email="diofanto.nunes@gmail.com",
+    author_email="dioph@pm.me",
     license="MIT",
     description="Modelization of light curves from spotted stars",
     long_description=long_description,
@@ -27,11 +38,12 @@ setup(
     url="https://github.com/dioph/spotlight",
     packages=["spotlight"],
     ext_modules=[extension],
-    install_requires=['numpy', 'scipy', 'dynesty'],
-    classifiers=(
+    install_requires=install_requires,
+    extras_require=extras_require,
+    classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Intended Audience :: Science/Research",
-    ),
+    ],
 )
