@@ -1,47 +1,52 @@
 import os
 import pickle
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 
+import numpy as np
 from dynesty import NestedSampler
 from dynesty.utils import merge_runs
 
-from spotlight.priors import *
-from spotlight.utils import *
+from .priors import Uniform, SameAs, Dirac
+from .utils import macula
+
+MAX_CORES = cpu_count()
+
+__all__ = ['SpotModel']
 
 
 class SpotModel(object):
+    """Modeler class
+
+    Attributes
+    ----------
+    t: time array
+    y: flux array
+    nspots: number of spots
+    dy: flux uncertainties (optional)
+    Pvec: 2-D array containing rotation period at equator and stellar inclination
+    k2: 2nd-order differential rotation coefficient
+    k4: 4th-order differential rotation coefficient
+    c: stellar limb-darkening coefficients
+    d: spot limb-darkening coefficients
+    same_limb: whether to always assume c==d in the model
+    lon: spot longitudes (rad)
+    lat: spot latitudes (rad)
+    alpha: spot radius (rad)
+    fspot: spot-to-photosphere intensity ratio
+    tmax: time of greatest spot area
+    life: spot lifetimes
+    ingress: spot ingress times
+    egress: spot egress times
+    U: unspotted surface flux value
+    B: instrumental blending factor
+    tstart: start time for each of the stitched curves
+    tend: end time for each of the stitched curves
+    """
     def __init__(self, t, y, nspots, dy=None,
                  Pvec=None, k2=None, k4=None, c=None, d=None, same_limb=False,
                  lon=None, lat=None, alpha=None, fspot=None,
                  tmax=None, life=None, ingress=None, egress=None,
                  U=None, B=None, tstart=None, tend=None):
-        """Class constructor
-
-        Attributes
-        ----------
-        t: time array
-        y: flux array
-        nspots: number of spots
-        dy: flux uncertainties (optional)
-        Pvec: 2-D array containing rotation period at equator and stellar inclination
-        k2: 2nd-order differential rotation coefficient
-        k4: 4th-order differential rotation coefficient
-        c: stellar limb-darkening coefficients
-        d: spot limb-darkening coefficients
-        same_limb: whether to always assume c==d in the model
-        lon: spot longitudes (rad)
-        lat: spot latitudes (rad)
-        alpha: spot radius (rad)
-        fspot: spot-to-photosphere intensity ratio
-        tmax: time of greatest spot area
-        life: spot lifetimes
-        ingress: spot ingress times
-        egress: spot egress times
-        U: unspotted surface flux value
-        B: instrumental blending factor
-        tstart: start time for each of the stitched curves
-        tend: end time for each of the stitched curves
-        """
         self.t = t
         self.y = y
         self.dy = dy
@@ -214,17 +219,32 @@ class SpotModel(object):
         nu = self.t.size - self.ndim
         return self.chi(theta) / nu
 
-    def run(self, nlive=1000, cores=1, filename=None, **kwargs):
-        merge = 'no'
+    def multinest(self, sampling_efficiency=0.01, const_efficiency_mode=True,
+                  n_live_points=4000, **kwargs):
+        def prior(cube):
+            return cube
 
+        def logl(cube):
+            theta = self.sample(cube)
+            n = self.t.size
+            c = - .5 * n * np.log(2 * np.pi) - .5 * np.log(self.dy).sum()
+            return c - .5 * self.chi(theta)
+
+        results = solve(LogLikelihood=logl, Prior=prior, n_dims=self.ndim, sampling_efficiency=sampling_efficiency,
+                        const_efficiency_mode=const_efficiency_mode, n_live_points=n_live_points, **kwargs)
+        return results
+
+    def run(self, nlive=1000, cores=None, filename=None, **kwargs):
+        merge = 'no'
         if filename is not None and os.path.isfile(filename):
-            doit = input(f'There seems to be a file named {filename}.'
-                         'Would you like to run anyway? [y/n]').lower()
+            doit = input(f'There seems to be a file named {filename}. '
+                         f'Would you like to run anyway? [y/n] ').lower()
             if doit in ['no', 'n']:
                 with open(filename, 'br') as file:
                     self.results = pickle.load(file)
                 return
-
+        if cores is None or cores > MAX_CORES:
+            cores = MAX_CORES
         try:
             with Pool(cores) as pool:
                 sampler = NestedSampler(self.loglike, self.sample, self.N, npdim=self.ndim,
@@ -232,17 +252,14 @@ class SpotModel(object):
                 sampler.run_nested()
         except KeyboardInterrupt:
             pass
-
         if filename is not None and os.path.isfile(filename):
-            merge = input('Merge new run with previous data?').lower()
-
+            merge = input('Merge new run with previous data? [y/n] ').lower()
         if merge in ['no', 'n']:
             self.results = sampler.results
         else:
             with open(filename, 'br') as file:
                 res = pickle.load(file)
             self.results = merge_runs([sampler.results, res])
-
         if filename is not None:
             with open(filename, 'bw') as file:
                 pickle.dump(self.results, file)
