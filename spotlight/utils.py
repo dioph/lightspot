@@ -1,5 +1,6 @@
 import numpy as np
 from _macula import maculamod
+from scipy.spatial import Delaunay
 
 __all__ = ['macula', 'triangulate', 'triangle_area', 'polygon_intersection']
 
@@ -74,10 +75,8 @@ def macula(t, theta_star, theta_spot, theta_inst, derivatives=False, temporal=Fa
 
 
 def triangulate(poly):
-    triangles = []
-    for i in range(poly.shape[0] - 2):
-        triangles.append(np.array([poly[i], poly[i + 1], poly[-1]]))
-    return np.array(triangles)
+    tri = Delaunay(poly)
+    return poly[tri.simplices]
 
 
 def triangle_area(triang):
