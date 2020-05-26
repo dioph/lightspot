@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from spotlight.priors import Uniform
+from lightspot.priors import Uniform
 
 
 class TestPrior(unittest.TestCase):

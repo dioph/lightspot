@@ -6,7 +6,7 @@
 
 Modelization of light curves from spotted stars
 
-__Documentation: https://periodicity.readthedocs.io__
+__Documentation: https://lightspot.readthedocs.io__
 
 To install the current release from PyPI run __`pip install lightspot`__.
 

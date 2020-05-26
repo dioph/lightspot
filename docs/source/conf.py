@@ -5,7 +5,7 @@ import subprocess
 import sphinx_rtd_theme
 from pkg_resources import get_distribution
 
-__version__ = get_distribution("spotlight").version
+__version__ = get_distribution("lightspot").version
 
 for fn in glob.glob("_static/notebooks/*.ipynb"):
     name = os.path.splitext(os.path.split(fn)[1])[0]
@@ -48,7 +48,7 @@ master_doc = 'index'
 
 
 # General information about the project.
-project = 'spotlight'
+project = 'lightspot'
 copyright = '2020, Eduardo Nunes'
 author = 'Eduardo Nunes'
 

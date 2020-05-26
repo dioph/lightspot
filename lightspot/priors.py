@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.stats import norm, truncnorm
 
-from spotlight.utils import triangulate, triangle_area, polygon_intersection
+from lightspot.utils import triangulate, triangle_area, polygon_intersection
 
 
 class Prior(object):
