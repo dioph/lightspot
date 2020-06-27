@@ -1,13 +1,26 @@
 import re
 
-from numpy.distutils.core import Extension, setup
+from setuptools import setup, Extension
+
+
+class GetPybindInclude(object):
+    """Helper class to determine the pybind11 include path
+    The purpose of this class is to postpone importing pybind11
+    until it is actually installed, so that the ``get_include()``
+    method can be invoked. """
+
+    def __str__(self):
+        import pybind11
+        return pybind11.get_include()
+
 
 with open("README.md", 'r') as f:
     long_description = f.read()
 
-extension = Extension(name="_macula",
-                      sources=["lightspot/macula.f90"],
-                      extra_compile_args=["-O3"])
+extension = Extension(name="lightspot.macula",
+                      sources=["lightspot/macula.cpp"],
+                      include_dirs=[GetPybindInclude(), ],
+                      language="c++")
 
 version = re.search(
     '^__version__\\s*=\\s*"(.*)"',
@@ -16,14 +29,15 @@ version = re.search(
 ).group(1)
 
 install_requires = [
+    "dynesty >= 1.0",
     "numpy",
-    "scipy >= 0.19",
-    "dynesty >= 1.0"
+    "pybind11 >= 2.2",
+    "scipy >= 0.19"
 ]
 
 extras_require = {
     "docs": ["jupyter", "numpydoc", "pandoc", "sphinx_rtd_theme"],
-    "test": ["pytest"]
+    "test": ["pytest", "flake8"]
 }
 
 setup(
