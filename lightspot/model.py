@@ -7,7 +7,7 @@ from dynesty import NestedSampler
 from dynesty.utils import merge_runs
 
 from .priors import Uniform, SameAs, Dirac
-from .utils import macula
+from .macula import macula
 
 MAX_CORES = cpu_count()
 
@@ -190,7 +190,7 @@ class SpotModel(object):
         theta_star = theta[:12]
         theta_spot = theta[12:12 + self.nspots * 8].reshape(8, -1)
         theta_inst = theta[12 + self.nspots * 8:].reshape(2, -1)
-        yf = macula(t, theta_star, theta_spot, theta_inst, tstart=self.tstart, tend=self.tend)
+        yf = macula(t, theta_star, theta_spot, theta_inst, tstart=self.tstart, tend=self.tend)[0]
         return yf
 
     def chi(self, theta):
@@ -218,21 +218,6 @@ class SpotModel(object):
     def reduced_chi(self, theta):
         nu = self.t.size - self.ndim
         return self.chi(theta) / nu
-
-    def multinest(self, sampling_efficiency=0.01, const_efficiency_mode=True,
-                  n_live_points=4000, **kwargs):
-        def prior(cube):
-            return cube
-
-        def logl(cube):
-            theta = self.sample(cube)
-            n = self.t.size
-            c = - .5 * n * np.log(2 * np.pi) - .5 * np.log(self.dy).sum()
-            return c - .5 * self.chi(theta)
-
-        results = solve(LogLikelihood=logl, Prior=prior, n_dims=self.ndim, sampling_efficiency=sampling_efficiency,
-                        const_efficiency_mode=const_efficiency_mode, n_live_points=n_live_points, **kwargs)
-        return results
 
     def run(self, nlive=1000, cores=None, filename=None, **kwargs):
         merge = 'no'

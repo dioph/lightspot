@@ -1,8 +1,7 @@
 import numpy as np
-from lightspot import macula
 from scipy.spatial import Delaunay
 
-__all__ = ['macula', 'triangulate', 'triangle_area', 'polygon_intersection']
+__all__ = ['triangulate', 'triangle_area', 'polygon_intersection']
 
 
 def triangulate(poly):

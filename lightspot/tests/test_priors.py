@@ -6,7 +6,7 @@ from lightspot.priors import Uniform
 
 
 class TestPrior(unittest.TestCase):
-    def test_uniform(self):
+    def test_uniform_prior_is_flat(self):
         np.random.seed(42)
         prior = Uniform()
         samples = prior.sample(*np.random.random(30_000))

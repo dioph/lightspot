@@ -10,3 +10,4 @@ docs/source/_static/notebooks/*.ipynb_checkpoints
 docs/source/tutorials
 *.so
 .vscode
+*.mod
