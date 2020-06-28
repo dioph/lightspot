@@ -1,5 +1,5 @@
 =========
-spotlight
+lightspot
 =========
 
 Installation

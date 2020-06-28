@@ -5,7 +5,7 @@ API
 Prior functions
 ===============
 
-.. automodule:: spotlight.priors
+.. automodule:: lightspot.priors
     :members:
     :undoc-members:
     :private-members:
@@ -14,7 +14,7 @@ Prior functions
 Modeler classes
 ===============
 
-.. automodule:: spotlight.model
+.. automodule:: lightspot.model
     :members:
     :undoc-members:
     :private-members:
