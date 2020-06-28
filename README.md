@@ -1,6 +1,7 @@
 # LightSpot
 
 [![](https://github.com/dioph/lightspot/workflows/CI/badge.svg)](https://github.com/dioph/lightspot/actions?query=branch%3Amaster)
+[![Documentation Status](https://readthedocs.org/projects/lightspot/badge/?version=latest)](https://lightspot.readthedocs.io/en/latest/?badge=latest)
 [![PyPI version](https://badge.fury.io/py/lightspot.svg)](https://badge.fury.io/py/lightspot)
 [![Downloads](https://pepy.tech/badge/lightspot)](https://pepy.tech/project/lightspot)
 
