@@ -1,11 +1,20 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/numpy.h>
 #include <algorithm>
+#include <vector>
 
 namespace py = pybind11;
 using namespace pybind11::literals;
 using npy = py::array_t<double, py::array::c_style | py::array::forcecast>;
 using tuple = std::tuple<npy,npy,npy,npy,npy,npy,npy>;
+using vec = std::vector<double>;
+using mat = std::vector<vec>;
+
+using std::cos;
+using std::sin;
+using std::acos;
+using std::pow;
+using std::sqrt;
 
 double zeta (double x)
 {
@@ -22,7 +31,7 @@ double kronecker (double x, double y)
 }
 
 tuple macula (npy T, npy Theta_star, npy Theta_spot, npy Theta_inst, npy Tstart, npy Tend,
-                    bool derivatives = false, bool temporal = false, bool TdeltaV = false)
+              bool derivatives = false, bool temporal = false, bool TdeltaV = false)
 {
   // PRE-AMBLE ////////////////////////////////////////////////////////////////
   // Note - There should be no need to ever change these four parameters.
@@ -75,7 +84,7 @@ tuple macula (npy T, npy Theta_star, npy Theta_spot, npy Theta_inst, npy Tstart,
   const int Nspot = theta_spot_.shape[1];
   const int mmax = theta_inst_.shape[1];
   const int jmax = pstar + pspot * Nspot + pinst * mmax;
-  double tref[Nspot]; // By default, macula will set tref[k]=tmax[k]
+  vec tref(Nspot); // By default, macula will set tref[k]=tmax[k]
   double SinInc, CosInc;
   const double pi = 3.141592653589793;
   const double halfpi = 1.5707963267948966;
@@ -99,7 +108,7 @@ tuple macula (npy T, npy Theta_star, npy Theta_spot, npy Theta_inst, npy Tstart,
   //                       SECTION 1: THETA ASSIGNMENT                       //
   /////////////////////////////////////////////////////////////////////////////
   
-  double Theta[jmax];
+  vec Theta(jmax);
 
   int l = 0;
   for (int j = 0; j < pstar; ++j) {
@@ -125,15 +134,48 @@ tuple macula (npy T, npy Theta_star, npy Theta_spot, npy Theta_inst, npy Tstart,
   //                       SECTION 2: BASIC PARAMETERS                       //
   /////////////////////////////////////////////////////////////////////////////
   
-  double c[pLD], d[pLD];
-  double U[mmax], B[mmax];
-  double Box[mmax][ndata];
-  double Phi0[Nspot], SinPhi0[Nspot], CosPhi0[Nspot], Prot[Nspot];
-  double beta[Nspot][ndata], sinbeta[Nspot][ndata], cosbeta[Nspot][ndata];
-  double alpha[Nspot][ndata], sinalpha[Nspot][ndata], cosalpha[Nspot][ndata];
-  double Lambda[Nspot][ndata], sinLambda[Nspot][ndata], cosLambda[Nspot][ndata];
-  double tcrit1[Nspot], tcrit2[Nspot], tcrit3[Nspot], tcrit4[Nspot];
-  double alphamax[Nspot], fspot[Nspot], tmax[Nspot], life[Nspot], ingress[Nspot], egress[Nspot];
+  vec c(pLD), d(pLD);
+  vec U(mmax), B(mmax);
+
+  vec Box(mmax);
+  vec Phi0(Nspot), SinPhi0(Nspot), CosPhi0(Nspot), Prot(Nspot);
+  vec beta(Nspot), sinbeta(Nspot), cosbeta(Nspot);
+  vec alpha(Nspot), sinalpha(Nspot), cosalpha(Nspot);
+  vec Lambda(Nspot), sinLambda(Nspot), cosLambda(Nspot);
+  vec tcrit1(Nspot), tcrit2(Nspot), tcrit3(Nspot), tcrit4(Nspot);
+  vec alphamax(Nspot), fspot(Nspot), tmax(Nspot), life(Nspot), ingress(Nspot), egress(Nspot);
+
+  // section 3
+  vec zetaneg(Nspot), zetapos(Nspot);
+  mat Upsilon(pLD, vec(Nspot)), w(pLD, vec(Nspot));
+  vec Psi(Nspot), Xi(Nspot);
+  double q;
+  vec A(Nspot);
+  double Fab0, Fab;
+
+  // section 4
+  mat dc(pLD, vec(jmax, 0)), dd(pLD, vec(jmax, 0));
+  mat dU(mmax, vec(jmax, 0)), dB(mmax, vec(jmax, 0));
+  mat dfspot(Nspot, vec(jmax, 0));
+
+  // section 5
+  mat dalpha(Nspot, vec(jmax, 0));
+  mat dbeta(Nspot, vec(jmax, 0));
+
+  // section 6
+  double epsil;
+  vec dAda(Nspot), dAdb(Nspot);
+
+  // section 7
+  double dA, dUpsilon, dw, dzetaneg, dzetapos, dq, dFtilde, dFab;
+  vec dFmod(jmax);
+  vec dzetanegda(Nspot), dzetaposda(Nspot);
+  vec dFab0(jmax, 0);
+
+  // section 8
+  double dalphadt, dbetadt, dzetanegdt, dzetaposdt;
+  double dqdt, dAdt, dwdt, dUpsilondt;
+  double dFtildedt, dFabdt;
 
   // c and d assignment
   for (int n = 1; n < pLD; ++n) {
@@ -151,16 +193,6 @@ tuple macula (npy T, npy Theta_star, npy Theta_spot, npy Theta_inst, npy Tstart,
   for (int m = 0; m < mmax; ++m) {
     U[m] = Theta[pstar + pspot * Nspot + m];
     B[m] = Theta[pstar + pspot * Nspot + mmax + m];
-  }
-
-  // Box-car function (labelled as Pi_m in the paper)
-  for (int i = 0; i < ndata; ++i) {
-    for (int m = 0; m < mmax; ++m) {
-      if (t[i] > tstart[m] && t[i] < tend[m])
-        Box[m][i] = 1.0;
-      else
-        Box[m][i] = 0.0;
-    }
   }
   
   // Spot params
@@ -192,41 +224,6 @@ tuple macula (npy T, npy Theta_star, npy Theta_spot, npy Theta_inst, npy Tstart,
     tcrit3[k] = tmax[k] + 0.5 * life[k];
     tcrit4[k] = tmax[k] + 0.5 * life[k] + egress[k];
   }
-  
-  // alpha, lambda & beta
-  for (int i = 0; i < ndata; ++i) {
-    for (int k = 0; k < Nspot; ++k) {
-      // temporal evolution of alpha
-      if (t[i] < tcrit1[k] || t[i] > tcrit4[k])
-        alpha[k][i] = 0.0;
-      else if (t[i] < tcrit3[k] && t[i] > tcrit2[k])
-        alpha[k][i] = alphamax[k];
-      else if (t[i] <= tcrit2[k] && t[i] >= tcrit1[k])
-        alpha[k][i] = alphamax[k] * ((t[i] - tcrit1[k]) / ingress[k]);
-      else
-        alpha[k][i] = alphamax[k] * ((tcrit4[k] - t[i]) / egress[k]);
-      sinalpha[k][i] = sin(alpha[k][i]);
-      cosalpha[k][i] = cos(alpha[k][i]);
-      // Lambda & beta calculation
-      Lambda[k][i] = Theta[pstar + pspot * k] + 2.0 * pi * (t[i] - tref[k]) / Prot[k];
-      sinLambda[k][i] = sin(Lambda[k][i]);
-      cosLambda[k][i] = cos(Lambda[k][i]);
-      cosbeta[k][i] = CosInc * SinPhi0[k] + SinInc * CosPhi0[k] * cosLambda[k][i];
-      beta[k][i] = acos(cosbeta[k][i]);
-      sinbeta[k][i] = sin(beta[k][i]);
-    }
-  }
-  
-  /////////////////////////////////////////////////////////////////////////////
-  //                        SECTION 3: COMPUTING FMOD                        //
-  /////////////////////////////////////////////////////////////////////////////
-  
-  double zetaneg[Nspot][ndata], zetapos[Nspot][ndata];
-  double Upsilon[pLD][Nspot][ndata], w[pLD][Nspot][ndata];
-  double Psi[Nspot][ndata], Xi[Nspot][ndata];
-  double q, A[Nspot][ndata];
-  double Fab0;
-  double Fab[ndata];
 
   // Fab0
   Fab0 = 0.0;
@@ -234,86 +231,13 @@ tuple macula (npy T, npy Theta_star, npy Theta_spot, npy Theta_inst, npy Tstart,
     Fab0 += (n * c[n]) / (n + 4.0);
   }
   Fab0 = 1.0 - Fab0;
-
-  // master fmod loop
-  for (int i = 0; i < ndata; ++i) {
-    Fab[i] = Fab0;
-    fmod[i] = 0.0;
-    for (int k = 0; k < Nspot; ++k) {
-      // zetapos and zetaneg
-      zetapos[k][i] = zeta(beta[k][i] + alpha[k][i]);
-      zetaneg[k][i] = zeta(beta[k][i] - alpha[k][i]);
-      // Area A
-      if (alpha[k][i] > tol) {
-        if (beta[k][i] > (halfpi + alpha[k][i])) {
-          // Case IV
-          A[k][i] = 0.0;
-        }
-        else if (beta[k][i] < (halfpi - alpha[k][i])) {
-          // Case I
-          A[k][i] = pi * cosbeta[k][i] * pow(sinalpha[k][i], 2);
-        }
-        else {
-          // Case II & III
-          Psi[k][i] = sqrt(1.0 - pow((cosalpha[k][i] / sinbeta[k][i]), 2));
-          Xi[k][i] = sinalpha[k][i] * acos(-(cosalpha[k][i] * cosbeta[k][i])
-                                          / (sinalpha[k][i] * sinbeta[k][i]));
-          A[k][i] = acos(cosalpha[k][i] / sinbeta[k][i])
-            + Xi[k][i] * cosbeta[k][i] * sinalpha[k][i]
-            - Psi[k][i] * sinbeta[k][i] * cosalpha[k][i];
-        }
-      }
-      else {
-        A[k][i] = 0.0;
-      }
-      q = 0.0;
-      // Upsilon & w
-      for (int n = 0; n < pLD; ++n) {
-        Upsilon[n][k][i] = pow(zetaneg[k][i], 2) - pow(zetapos[k][i], 2)
-                            + kronecker(zetapos[k][i], zetaneg[k][i]);
-        Upsilon[n][k][i] = (sqrt(pow(zetaneg[k][i], n+4))
-                            - sqrt(pow(zetapos[k][i], n+4))) / Upsilon[n][k][i];
-        w[n][k][i] = (4.0 * (c[n] - d[n] * fspot[k])) / (n + 4.0);
-        w[n][k][i] *= Upsilon[n][k][i];
-        // q
-        q += (A[k][i] * piI) * w[n][k][i];
-      }
-      // Fab
-      Fab[i] -= q;
-    }
-    for (int m = 0; m < mmax; ++m) {
-      fmod[i] += U[m] * Box[m][i] * (Fab[i] / (Fab0 * B[m]) + (B[m] - 1.0) / B[m]);
-    }
-  }
-
-  // delta {obs}/delta
-  if (TdeltaV) {
-    for (int i = 0; i < ndata; ++i) {
-      deltaratio[i] = 0.0;
-      for (int m = 0; m < mmax; ++m) {
-        deltaratio[i] += B[m] * Box[m][i];
-      }
-      deltaratio[i] = (Fab0 / Fab[i]) / deltaratio[i];
-    }
-  }
-  else {
-    std::fill(deltaratio, deltaratio+ndata, 1.0);
-  }
   
   /////////////////////////////////////////////////////////////////////////////
   //                       SECTION 4: BASIS DERIVATIVES                      //
   /////////////////////////////////////////////////////////////////////////////
-  
-  double dc[pLD][jmax], dd[pLD][jmax];
-  double dU[mmax][jmax], dB[mmax][jmax];
-  double dfspot[Nspot][jmax];
-  
-  // Master if-loop
+
   if (derivatives) {
     // derivatives of c & d.
-    for (int n = 0; n < pLD; ++n) {
-      std::fill(dc[n], dc[n]+jmax, 0.0);
-    }
     dc[1][4] = 1.0;
     dc[2][5] = 1.0;
     dc[3][6] = 1.0;
@@ -322,10 +246,6 @@ tuple macula (npy T, npy Theta_star, npy Theta_spot, npy Theta_inst, npy Tstart,
     dc[0][5] = -1.0;
     dc[0][6] = -1.0;
     dc[0][7] = -1.0;
-
-    for (int n = 0; n < pLD; ++n) {
-      std::fill(dd[n], dd[n]+jmax, 0.0);
-    }
     dd[1][8] = 1.0;
     dd[2][9] = 1.0;
     dd[3][10] = 1.0;
@@ -337,206 +257,262 @@ tuple macula (npy T, npy Theta_star, npy Theta_spot, npy Theta_inst, npy Tstart,
 
     // derivatives of U
     for (int m = 0; m < mmax; ++m) {
-      std::fill(dU[m], dU[m]+jmax, 0.0);
       dU[m][pstar + pspot * Nspot + m] = 1.0;
     }
 
     // derivatives of B
     for (int m = 0; m < mmax; ++m) {
-      std::fill(dB[m], dB[m]+jmax, 0.0);
       dB[m][pstar + pspot * Nspot + mmax + m] = 1.0;
     }
 
     // Derivatives of fspot (4th spot parameter)
     for (int k = 0; k < Nspot; ++k) {
-      std::fill(dfspot[k], dfspot[k]+jmax, 0.0);
       dfspot[k][pstar + pspot * k + 3] = 1.0;
     }
 
-    ///////////////////////////////////////////////////////////////////////////
-    //                  SECTION 5: ALPHA & BETA DERIVATIVES                  //
-    ///////////////////////////////////////////////////////////////////////////
-    
-    double dalpha[Nspot][ndata][jmax];
-    double dbeta[Nspot][ndata][jmax];
-
-    // Derivatives of alpha & beta
-    for (int i = 0; i < ndata; ++i) {
-      for (int k = 0; k < Nspot; ++k) {
-        // Derivatives of alpha(alphamax,tmax,life,ingress,egress)
-        // [function of 5*Nspot parameters]
-        std::fill(dalpha[k][i], dalpha[k][i]+jmax, 0.0);
-        // wrt alphamax (3rd spot parameter)
-        dalpha[k][i][pstar + pspot * k + 2] = alpha[k][i] / alphamax[k];
-        // wrt tmax (5th spot parameter)
-        if (t[i] < tcrit2[k] && t[i] > tcrit1[k])
-          dalpha[k][i][pstar + pspot * k + 4] = -alphamax[k] / ingress[k];
-        else if (t[i] < tcrit4[k] && t[i] > tcrit3[k])
-          dalpha[k][i][pstar + pspot * k + 4] = alphamax[k] / egress[k];
-        // wrt life (6th spot parameter)
-        if (t[i] < tcrit2[k] && t[i] > tcrit1[k])
-          dalpha[k][i][pstar + pspot * k + 5] = 0.5 * alphamax[k] / ingress[k];
-        else if (t[i] < tcrit4[k] && t[i] > tcrit3[k])
-          dalpha[k][i][pstar + pspot * k + 5] = 0.5 * alphamax[k] / egress[k];
-        // wrt ingress (7th spot parameter)
-        if (t[i] < tcrit2[k] && t[i] > tcrit1[k]) {
-          dalpha[k][i][pstar + pspot * k + 6] = -(alphamax[k] / pow(ingress[k], 2)) *
-            (t[i] - 0.50 * (tcrit1[k] + tcrit2[k]));
-        }
-        // wrt egress (8th spot parameter)
-        if (t[i] < tcrit4[k] && t[i] > tcrit3[k]) {
-          dalpha[k][i][pstar + pspot * k + 7] = (alphamax[k] / pow(egress[k], 2)) *
-            (t[i] - 0.50 * (tcrit3[k] + tcrit4[k]));
-        }
-        // Stellar derivatives of beta(Istar,Phi0,Lambda0,Peq,kappa2,kappa4)
-        // [Function of 4+2*Nspot parameters]
-        std::fill(dbeta[k][i], dbeta[k][i]+jmax, 0.0);
-        // wrt Istar (1st star parameter)
-        dbeta[k][i][0] = SinPhi0[k] * SinInc - cosLambda[k][i] * CosPhi0[k] * CosInc;
-        dbeta[k][i][0] /= sinbeta[k][i];
-        // wrt Peq (2nd star parameter)
-        dbeta[k][i][1] = CosPhi0[k] * sinLambda[k][i] * SinInc / sinbeta[k][i];
-        dbeta[k][i][1] *= 2.0 * pi * (t[i] - tref[k]) / Theta[1]; // Temporary
-        // wrt kappa2 (3rd star parameter)
-        dbeta[k][i][2] = -dbeta[k][i][1] * pow(SinPhi0[k], 2);
-        // wrt kappa4 (4th star parameter)
-        dbeta[k][i][3] = -dbeta[k][i][1] * pow(SinPhi0[k], 4);
-        // wrt Peq continued
-        dbeta[k][i][1] = -dbeta[k][i][1] / Prot[k];
-        // Spot-derivatives of beta
-        // wrt Lambda [1st spot parameter]
-        dbeta[k][i][pstar + pspot * k] = SinInc * CosPhi0[k] * sinLambda[k][i] / sinbeta[k][i];
-        // wrt Phi0 [2nd spot parameter]
-        dbeta[k][i][pstar + pspot * k + 1] = 2.0 * Theta[2] * pow(CosPhi0[k], 2)
-          + Theta[3] * pow(2.0 * SinPhi0[k] * CosPhi0[k], 2);
-        dbeta[k][i][pstar + pspot * k + 1] *= 2.0 * pi * (t[i] - tref[k]) / Theta[1];
-        dbeta[k][i][pstar + pspot * k + 1] = cosLambda[k][i] - dbeta[k][i][pstar + pspot * k + 1];
-        dbeta[k][i][pstar + pspot * k + 1] *= SinInc * SinPhi0[k] / sinbeta[k][i];
-      }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////
-    //                        SECTION 6: A DERIVATIVES                       //
-    ///////////////////////////////////////////////////////////////////////////
-    
-    double epsil, dAda[Nspot][ndata], dAdb[Nspot][ndata];
-
-    // Semi-derivatives of A
-    for (int i = 0; i < ndata; ++i) {
-      for (int k = 0; k < Nspot; ++k) {
-        if (alpha[k][i] > tol) {
-          if (beta[k][i] > (halfpi + alpha[k][i])) {
-            // Case IV
-            dAda[k][i] = 0.0;
-            dAdb[k][i] = 0.0;
-          }
-          else if (beta[k][i] < (halfpi - alpha[k][i])) {
-            // Case I
-            dAda[k][i] = 2.0 * pi * cosbeta[k][i] * sinalpha[k][i] * cosalpha[k][i];
-            dAdb[k][i] = -pi * pow(sinalpha[k][i], 2) * sinbeta[k][i];
-          }
-          else {
-            // Case II & III
-            epsil = 2.0 * (pow(cosalpha[k][i], 2) + pow(cosbeta[k][i], 2) - 1.0) /
-                    (pow(sinbeta[k][i], 2) * Psi[k][i]);
-            dAda[k][i] = -sinalpha[k][i] * sinbeta[k][i] * epsil
-                        + 2.0 * cosalpha[k][i] * cosbeta[k][i] * Xi[k][i];
-            dAdb[k][i] = 0.5 * cosalpha[k][i] * cosbeta[k][i] * epsil
-                        - sinalpha[k][i] * sinbeta[k][i] * Xi[k][i];
-          }
-        }
-        else {
-          dAda[k][i] = 0.0;
-          dAdb[k][i] = 0.0;
-        }
-      }
-    }
-
-    ///////////////////////////////////////////////////////////////////////////
-    //                      SECTION 7: FINAL DERIVATIVES                     //
-    ///////////////////////////////////////////////////////////////////////////
-        
-    double dA;
-    double dUpsilon, dw;
-    double dzetaneg;
-    double dzetapos;
-    double dq;
-    double dFtilde;
-    double dFab, dFmod[ndata][jmax];
-    double dzetanegda[Nspot][ndata], dzetaposda[Nspot][ndata];
-    double dFab0[jmax];
-
     // Derivatives of Fab0
-    std::fill(dFab0, dFab0+jmax, 0.0);
     dFab0[4] = -0.2;
     dFab0[5] = -0.33333333;
     dFab0[6] = -0.42857143;
     dFab0[7] = -0.5;
+  }
 
-    // derivatives main loop
-    for (int j = 0; j < jmax; ++j) {
-      for (int i = 0; i < ndata; ++i) {
+  // MASTER LOOP //////////////////////////////////////////////////////////////
+  for (int i = 0; i < ndata; ++i) {
+    // Box-car function (labelled as Pi_m in the paper)
+    for (int m = 0; m < mmax; ++m) {
+      if (t[i] > tstart[m] && t[i] < tend[m])
+        Box[m] = 1.0;
+      else
+        Box[m] = 0.0;
+    }
+    // alpha, lambda & beta
+    for (int k = 0; k < Nspot; ++k) {
+      // temporal evolution of alpha
+      if (t[i] < tcrit1[k] || t[i] > tcrit4[k])
+        alpha[k] = 0.0;
+      else if (t[i] < tcrit3[k] && t[i] > tcrit2[k])
+        alpha[k] = alphamax[k];
+      else if (t[i] <= tcrit2[k] && t[i] >= tcrit1[k])
+        alpha[k] = alphamax[k] * ((t[i] - tcrit1[k]) / ingress[k]);
+      else
+        alpha[k] = alphamax[k] * ((tcrit4[k] - t[i]) / egress[k]);
+      sinalpha[k] = sin(alpha[k]);
+      cosalpha[k] = cos(alpha[k]);
+      // Lambda & beta calculation
+      Lambda[k] = Theta[pstar + pspot * k] + 2.0 * pi * (t[i] - tref[k]) / Prot[k];
+      sinLambda[k] = sin(Lambda[k]);
+      cosLambda[k] = cos(Lambda[k]);
+      cosbeta[k] = CosInc * SinPhi0[k] + SinInc * CosPhi0[k] * cosLambda[k];
+      beta[k] = acos(cosbeta[k]);
+      sinbeta[k] = sin(beta[k]);
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    //                       SECTION 3: COMPUTING FMOD                       //
+    ///////////////////////////////////////////////////////////////////////////
+
+    Fab = Fab0;
+    fmod[i] = 0.0;
+    for (int k = 0; k < Nspot; ++k) {
+      // zetapos and zetaneg
+      zetapos[k] = zeta(beta[k] + alpha[k]);
+      zetaneg[k] = zeta(beta[k] - alpha[k]);
+      // Area A
+      if (alpha[k] > tol) {
+        if (beta[k] > (halfpi + alpha[k])) {
+          // Case IV
+          A[k] = 0.0;
+        }
+        else if (beta[k] < (halfpi - alpha[k])) {
+          // Case I
+          A[k] = pi * cosbeta[k] * pow(sinalpha[k], 2);
+        }
+        else {
+          // Case II & III
+          Psi[k] = sqrt(1.0 - pow((cosalpha[k] / sinbeta[k]), 2));
+          Xi[k] = sinalpha[k] * acos(-(cosalpha[k] * cosbeta[k])
+                                      / (sinalpha[k] * sinbeta[k]));
+          A[k] = acos(cosalpha[k] / sinbeta[k])
+            + Xi[k] * cosbeta[k] * sinalpha[k]
+            - Psi[k] * sinbeta[k] * cosalpha[k];
+        }
+      }
+      else {
+        A[k] = 0.0;
+      }
+      q = 0.0;
+      // Upsilon & w
+      for (int n = 0; n < pLD; ++n) {
+        Upsilon[n][k] = pow(zetaneg[k], 2) - pow(zetapos[k], 2) + kronecker(zetapos[k], zetaneg[k]);
+        Upsilon[n][k] = (sqrt(pow(zetaneg[k], n+4)) - sqrt(pow(zetapos[k], n+4))) / Upsilon[n][k];
+        w[n][k] = (4.0 * (c[n] - d[n] * fspot[k])) / (n + 4.0);
+        w[n][k] *= Upsilon[n][k];
+        // q
+        q += (A[k] * piI) * w[n][k];
+      }
+      // Fab
+      Fab -= q;
+    }
+    for (int m = 0; m < mmax; ++m) {
+      fmod[i] += U[m] * Box[m] * (Fab / (Fab0 * B[m]) + (B[m] - 1.0) / B[m]);
+    }
+    // delta {obs}/delta
+    if (TdeltaV) {
+      deltaratio[i] = 0.0;
+      for (int m = 0; m < mmax; ++m) {
+        deltaratio[i] += B[m] * Box[m];
+      }
+      deltaratio[i] = (Fab0 / Fab) / deltaratio[i];
+    }
+    else {
+      deltaratio[i] = 1.0;
+    }
+
+    // Master if-loop
+    if (derivatives) {
+
+      /////////////////////////////////////////////////////////////////////////
+      //                 SECTION 5: ALPHA & BETA DERIVATIVES                 //
+      /////////////////////////////////////////////////////////////////////////
+
+      for (int k = 0; k < Nspot; ++k) {
+        // Derivatives of alpha(alphamax,tmax,life,ingress,egress)
+        // [function of 5*Nspot parameters]
+        // wrt alphamax (3rd spot parameter)
+        dalpha[k][pstar + pspot * k + 2] = alpha[k] / alphamax[k];
+        // wrt tmax (5th spot parameter)
+        if (t[i] < tcrit2[k] && t[i] > tcrit1[k])
+          dalpha[k][pstar + pspot * k + 4] = -alphamax[k] / ingress[k];
+        else if (t[i] < tcrit4[k] && t[i] > tcrit3[k])
+          dalpha[k][pstar + pspot * k + 4] = alphamax[k] / egress[k];
+        // wrt life (6th spot parameter)
+        if (t[i] < tcrit2[k] && t[i] > tcrit1[k])
+          dalpha[k][pstar + pspot * k + 5] = 0.5 * alphamax[k] / ingress[k];
+        else if (t[i] < tcrit4[k] && t[i] > tcrit3[k])
+          dalpha[k][pstar + pspot * k + 5] = 0.5 * alphamax[k] / egress[k];
+        // wrt ingress (7th spot parameter)
+        if (t[i] < tcrit2[k] && t[i] > tcrit1[k]) {
+          dalpha[k][pstar + pspot * k + 6] = -(alphamax[k] / pow(ingress[k], 2)) *
+            (t[i] - 0.50 * (tcrit1[k] + tcrit2[k]));
+        }
+        // wrt egress (8th spot parameter)
+        if (t[i] < tcrit4[k] && t[i] > tcrit3[k]) {
+          dalpha[k][pstar + pspot * k + 7] = (alphamax[k] / pow(egress[k], 2)) *
+            (t[i] - 0.50 * (tcrit3[k] + tcrit4[k]));
+        }
+        // Stellar derivatives of beta(Istar,Phi0,Lambda0,Peq,kappa2,kappa4)
+        // [Function of 4+2*Nspot parameters]
+        // wrt Istar (1st star parameter)
+        dbeta[k][0] = SinPhi0[k] * SinInc - cosLambda[k] * CosPhi0[k] * CosInc;
+        dbeta[k][0] /= sinbeta[k];
+        // wrt Peq (2nd star parameter)
+        dbeta[k][1] = CosPhi0[k] * sinLambda[k] * SinInc / sinbeta[k];
+        dbeta[k][1] *= 2.0 * pi * (t[i] - tref[k]) / Theta[1]; // Temporary
+        // wrt kappa2 (3rd star parameter)
+        dbeta[k][2] = -dbeta[k][1] * pow(SinPhi0[k], 2);
+        // wrt kappa4 (4th star parameter)
+        dbeta[k][3] = -dbeta[k][1] * pow(SinPhi0[k], 4);
+        // wrt Peq continued
+        dbeta[k][1] = -dbeta[k][1] / Prot[k];
+        // Spot-derivatives of beta
+        // wrt Lambda [1st spot parameter]
+        dbeta[k][pstar + pspot * k] = SinInc * CosPhi0[k] * sinLambda[k] / sinbeta[k];
+        // wrt Phi0 [2nd spot parameter]
+        dbeta[k][pstar + pspot * k + 1] = 2.0 * Theta[2] * pow(CosPhi0[k], 2)
+          + Theta[3] * pow(2.0 * SinPhi0[k] * CosPhi0[k], 2);
+        dbeta[k][pstar + pspot * k + 1] *= 2.0 * pi * (t[i] - tref[k]) / Theta[1];
+        dbeta[k][pstar + pspot * k + 1] = cosLambda[k] - dbeta[k][pstar + pspot * k + 1];
+        dbeta[k][pstar + pspot * k + 1] *= SinInc * SinPhi0[k] / sinbeta[k];
+      }
+
+      /////////////////////////////////////////////////////////////////////////
+      //                       SECTION 6: A DERIVATIVES                      //
+      /////////////////////////////////////////////////////////////////////////
+
+      for (int k = 0; k < Nspot; ++k) {
+        if (alpha[k] > tol) {
+          if (beta[k] > (halfpi + alpha[k])) {
+            // Case IV
+            dAda[k] = 0.0;
+            dAdb[k] = 0.0;
+          }
+          else if (beta[k] < (halfpi - alpha[k])) {
+            // Case I
+            dAda[k] = 2.0 * pi * cosbeta[k] * sinalpha[k] * cosalpha[k];
+            dAdb[k] = -pi * pow(sinalpha[k], 2) * sinbeta[k];
+          }
+          else {
+            // Case II & III
+            epsil = 2.0 * (pow(cosalpha[k], 2) + pow(cosbeta[k], 2) - 1.0) 
+                            / (pow(sinbeta[k], 2) * Psi[k]);
+            dAda[k] = -sinalpha[k] * sinbeta[k] * epsil + 2.0 * cosalpha[k] * cosbeta[k] * Xi[k];
+            dAdb[k] = 0.5 * cosalpha[k] * cosbeta[k] * epsil - sinalpha[k] * sinbeta[k] * Xi[k];
+          }
+        }
+        else {
+          dAda[k] = 0.0;
+          dAdb[k] = 0.0;
+        }
+      }
+
+      /////////////////////////////////////////////////////////////////////////
+      //                     SECTION 7: FINAL DERIVATIVES                    //
+      /////////////////////////////////////////////////////////////////////////
+
+      for (int j = 0; j < jmax; ++j) {
         dFab = dFab0[j];
-        dFmod[i][j] = 0.0;
+        dFmod[j] = 0.0;
         for (int k = 0; k < Nspot; ++k) {
           // Derivatives of A
-          dA = dAda[k][i] * dalpha[k][i][j] + dAdb[k][i] * dbeta[k][i][j];
+          dA = dAda[k] * dalpha[k][j] + dAdb[k] * dbeta[k][j];
           // Derivatives of zeta wrt alpha (and implicitly beta)
           // dzetanegda
-          if ((beta[k][i] - alpha[k][i]) < halfpi && (beta[k][i] - alpha[k][i]) > 0.0)
-            dzetanegda[k][i] = cosalpha[k][i] * sinbeta[k][i] - cosbeta[k][i] * sinalpha[k][i];
+          if ((beta[k] - alpha[k]) < halfpi && (beta[k] - alpha[k]) > 0.0)
+            dzetanegda[k] = cosalpha[k] * sinbeta[k] - cosbeta[k] * sinalpha[k];
           else
-            dzetanegda[k][i] = 0.0;
+            dzetanegda[k] = 0.0;
           // dzetaposda
-          if ((beta[k][i] + alpha[k][i]) < halfpi && (beta[k][i] + alpha[k][i]) > 0.0)
-            dzetaposda[k][i] = -cosalpha[k][i] * sinbeta[k][i] - cosbeta[k][i] * sinalpha[k][i];
+          if ((beta[k] + alpha[k]) < halfpi && (beta[k] + alpha[k]) > 0.0)
+            dzetaposda[k] = -cosalpha[k] * sinbeta[k] - cosbeta[k] * sinalpha[k];
           else
-            dzetaposda[k][i] = 0.0;
+            dzetaposda[k] = 0.0;
           // Derivatives of zeta
-          dzetaneg = dzetanegda[k][i] * (dalpha[k][i][j] - dbeta[k][i][j]);
-          dzetapos = dzetaposda[k][i] * (dalpha[k][i][j] + dbeta[k][i][j]);
+          dzetaneg = dzetanegda[k] * (dalpha[k][j] - dbeta[k][j]);
+          dzetapos = dzetaposda[k] * (dalpha[k][j] + dbeta[k][j]);
           dq = 0.0;
           // Derivatives of Upsilon
           for (int n = 0; n < pLD; ++n) {
-            dUpsilon = sqrt(pow(zetaneg[k][i], n+2)) * dzetaneg
-              - sqrt(pow(zetapos[k][i], n+2)) * dzetapos;
-            dUpsilon = 0.5 * (n+4.0) * dUpsilon - 2.0 * Upsilon[n][k][i] \
+            dUpsilon = sqrt(pow(zetaneg[k], n+2)) * dzetaneg
+              - sqrt(pow(zetapos[k], n+2)) * dzetapos;
+            dUpsilon = 0.5 * (n+4.0) * dUpsilon - 2.0 * Upsilon[n][k]
                         * (dzetaneg - dzetapos);
-            dUpsilon /= (pow(zetaneg[k][i], 2) - pow(zetapos[k][i], 2)
-                                     + kronecker(zetapos[k][i], zetaneg[k][i]));
+            dUpsilon /= (pow(zetaneg[k], 2) - pow(zetapos[k], 2) + kronecker(zetapos[k], zetaneg[k]));
             // Derivatives of w
-            dw = Upsilon[n][k][i] * dc[n][j] + (c[n] - d[n] * fspot[k]) * dUpsilon -
-                  d[n] * Upsilon[n][k][i] * dfspot[k][j] - 
-                  fspot[k] * Upsilon[n][k][i] * dd[n][j];
+            dw = Upsilon[n][k] * dc[n][j] + (c[n] - d[n] * fspot[k]) * dUpsilon -
+                  d[n] * Upsilon[n][k] * dfspot[k][j] - 
+                  fspot[k] * Upsilon[n][k] * dd[n][j];
             dw *= 4.0 / (n + 4.0);
             // Derivatives of q
-            dq += (A[k][i] * dw + dA * w[n][k][i]) * piI;
+            dq += (A[k] * dw + dA * w[n][k]) * piI;
           }
           dFab -= dq;
         }
         for (int m = 0; m < mmax; ++m) {
-          dFtilde = Fab0 * B[m] * (Fab[i] + Fab0 * (B[m] - 1.0)) * dU[m][j]
-                    + U[m] * (B[m] * Fab0 * dFab - B[m] * Fab[i] * dFab0[j]
-                    + Fab0 * (Fab0 - Fab[i]) * dB[m][j]);
-          dFtilde *= Box[m][i] / pow(Fab0*B[m], 2);
-          dFmod[i][j] += dFtilde;
+          dFtilde = Fab0 * B[m] * (Fab + Fab0 * (B[m] - 1.0)) * dU[m][j]
+                    + U[m] * (B[m] * Fab0 * dFab - B[m] * Fab * dFab0[j]
+                    + Fab0 * (Fab0 - Fab) * dB[m][j]);
+          dFtilde *= Box[m] / pow(Fab0*B[m], 2);
+          dFmod[j] += dFtilde;
         }
       }
-    }
 
-    ///////////////////////////////////////////////////////////////////////////
-    //                    SECTION 8: TEMPORAL DERIVATIVES                    //
-    ///////////////////////////////////////////////////////////////////////////
+      /////////////////////////////////////////////////////////////////////////
+      //                   SECTION 8: TEMPORAL DERIVATIVES                   //
+      /////////////////////////////////////////////////////////////////////////
 
-    double dalphadt, dbetadt, dzetanegdt, dzetaposdt;
-    double dqdt, dAdt;
-    double dwdt, dUpsilondt;
-    double dFtildedt;
-    double dFabdt;
-    
-    if (temporal) {
-      // Temporal derivatives of alpha and beta
-      for (int i = 0; i < ndata; ++i) {
+      if (temporal) {
+        // Temporal derivatives of alpha and beta
         dFabdt = 0.0;
         dfmoddt[i] = 0.0;
         for (int k = 0; k < Nspot; ++k) {
@@ -546,75 +522,66 @@ tuple macula (npy T, npy Theta_star, npy Theta_spot, npy Theta_inst, npy Tstart,
             dalphadt = -alphamax[k] / egress[k];
           else
             dalphadt = 0.0;
-          dbetadt = 1.0 - pow(SinInc * CosPhi0[k] * cosLambda[k][i] 
-                              + CosInc * SinPhi0[k], 2);
-          dbetadt = (2.0 * pi * SinInc * CosPhi0[k] * sinLambda[k][i]) /
-                      (Prot[k] * sqrt(dbetadt));
+          dbetadt = 1.0 - pow(SinInc * CosPhi0[k] * cosLambda[k] + CosInc * SinPhi0[k], 2);
+          dbetadt = (2.0 * pi * SinInc * CosPhi0[k] * sinLambda[k]) / (Prot[k] * sqrt(dbetadt));
           // Temporal derivatives of zeta
-          dzetanegdt = dzetanegda[k][i] * (dalphadt - dbetadt);
-          dzetaposdt = dzetaposda[k][i] * (dalphadt + dbetadt);
+          dzetanegdt = dzetanegda[k] * (dalphadt - dbetadt);
+          dzetaposdt = dzetaposda[k] * (dalphadt + dbetadt);
           // Temporal derivatives of A
-          dAdt = dAda[k][i] * dalphadt + dAdb[k][i] * dbetadt;
+          dAdt = dAda[k] * dalphadt + dAdb[k] * dbetadt;
           dqdt = 0.0;
           // Temporal derivatives of Upsilon
           for (int n = 0; n < pLD; ++n) {
-            dUpsilondt = sqrt(pow(zetaneg[k][i], n+2)) * dzetanegdt
-              - sqrt(pow(zetapos[k][i], n+2)) * dzetaposdt;
-            dUpsilondt = 0.5 * (n + 4.0) * dUpsilondt
-              - 2.0 * Upsilon[n][k][i] *
-              (dzetanegdt - dzetaposdt);
-            dUpsilondt /= (pow(zetaneg[k][i], 2) - pow(zetapos[k][i], 2)
-                           + kronecker(zetapos[k][i], zetaneg[k][i]));
+            dUpsilondt = sqrt(pow(zetaneg[k], n+2)) * dzetanegdt 
+                        - sqrt(pow(zetapos[k], n+2)) * dzetaposdt;
+            dUpsilondt = 0.5 * (n + 4) * dUpsilondt - 2.0 * Upsilon[n][k] * (dzetanegdt - dzetaposdt);
+            dUpsilondt /= (pow(zetaneg[k], 2) - pow(zetapos[k], 2)
+                           + kronecker(zetapos[k], zetaneg[k]));
             // Temporal derivatives of w
             dwdt = dUpsilondt * ((4.0 * (c[n] - d[n] * fspot[k])) / (n + 4.0));
             // Temporal derivatives of q
-            dqdt += (A[k][i] * dwdt + dAdt * w[n][k][i]) * piI;
+            dqdt += (A[k] * dwdt + dAdt * w[n][k]) * piI;
           }
           // Temporal derivatives of Fab
           dFabdt -= dqdt;
         }
         // Temporal derivatives of Ftilde
         for (int m = 0; m < mmax; ++m) {
-          dFtildedt = ((U[m] * Box[m][i]) / (B[m] * Fab0)) * dFabdt;
+          dFtildedt = ((U[m] * Box[m]) / (B[m] * Fab0)) * dFabdt;
           // Temporal derivatives of Fmod
           dfmoddt[i] += dFtildedt;
         }
       }
-    }
-    else {
-      std::fill(dfmoddt, dfmoddt+ndata, 0.0);
-    }
-
-    ///////////////////////////////////////////////////////////////////////////
-    //                    SECTION 9: RE-SPLIT DERIVATIVES                    //
-    ///////////////////////////////////////////////////////////////////////////
-
-    // Derivatives provided for Theta_star, Theta_inst, Theta_spot discretely
-    l = 0;
-    for (int j = 0; j < pstar; ++j) {
-      for (int i = 0; i < ndata; ++i) {
-        dfmod_star[i * pstar + j] = dFmod[i][l];
+      else {
+        dfmoddt[i] = 0.0;
       }
-      l++;
-    }
-    for (int k = 0; k < Nspot; ++k) {
-      for (int j = 0; j < pspot; ++j) {
-        for (int i = 0; i < ndata; ++i) {
-          dfmod_spot[i * pspot * Nspot + j * Nspot + k] = dFmod[i][l];
-        }
+
+      /////////////////////////////////////////////////////////////////////////
+      //                   SECTION 9: RE-SPLIT DERIVATIVES                   //
+      /////////////////////////////////////////////////////////////////////////
+
+      l = 0;
+      // Derivatives provided for Theta_star, Theta_inst, Theta_spot discretely
+      for (int j = 0; j < pstar; ++j) {
+        dfmod_star[i * pstar + j] = dFmod[l];
         l++;
       }
-    }
-    for (int m = 0; m < mmax; ++m) {
-      for (int j = 0; j < pinst; ++j) {
-        for (int i = 0; i < ndata; ++i) {
-          dfmod_inst[i * pinst * mmax + j * mmax + m] = dFmod[i][l];
+      for (int k = 0; k < Nspot; ++k) {
+        for (int j = 0; j < pspot; ++j) {
+          dfmod_spot[i * pspot * Nspot + j * Nspot + k] = dFmod[l];
+          l++;
         }
-        l++;
+      }
+      for (int m = 0; m < mmax; ++m) {
+        for (int j = 0; j < pinst; j++) {
+          dfmod_inst[i * pinst * mmax + j * mmax + m] = dFmod[l];
+          l++;
+        }
       }
     }
   }
-  else {
+
+  if (!derivatives) {
     std::fill(dfmod_star, dfmod_star+pstar*ndata, 0.0);
     std::fill(dfmod_spot, dfmod_spot+pspot*Nspot*ndata, 0.0);
     std::fill(dfmod_inst, dfmod_inst+pinst*mmax*ndata, 0.0);
