@@ -5,12 +5,18 @@
 [![PyPI version](https://badge.fury.io/py/lightspot.svg)](https://badge.fury.io/py/lightspot)
 [![Downloads](https://pepy.tech/badge/lightspot)](https://pepy.tech/project/lightspot)
 
-Modelization of light curves from spotted stars
+Modelization of light curves from spotted stars.
 
 __Documentation: https://lightspot.readthedocs.io__
 
-To install the current release from PyPI run __`pip install lightspot`__.
+## Installation
 
-If you wish to contribute, you can clone the repo with 
-__`git clone https://github.com/dioph/lightspot.git`__ and run
-__`pip install .[docs,test]`__ in the `lightspot` dir.
+The latest version is available to download via PyPI: __`pip install lightspot`__.
+
+Alternatively, you can build the current development version from source by cloning this repo (__`git clone https://github.com/dioph/lightspot.git`__) and running __`pip install ./lightspot`__.
+
+## Development
+
+If you're interested in contributing to lightspot, install __pipenv__ and you can setup everything you need with __`pipenv install --dev`__.
+
+To automatically test the project (and also check formatting, coverage, etc.), simply run __`tox`__ within the project's directory.
