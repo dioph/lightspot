@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.spatial import Delaunay
 
-__all__ = ['triangulate', 'triangle_area', 'polygon_intersection']
+__all__ = ["triangulate", "triangle_area", "polygon_intersection"]
 
 
 def triangulate(poly):
@@ -11,7 +11,9 @@ def triangulate(poly):
 
 def triangle_area(triang):
     A, B, C = triang
-    area = np.abs(A[0] * (B[1] - C[1]) + B[0] * (C[1] - A[1]) + C[0] * (A[1] - B[1])) / 2
+    area = (
+        np.abs(A[0] * (B[1] - C[1]) + B[0] * (C[1] - A[1]) + C[0] * (A[1] - B[1])) / 2
+    )
     return area
 
 
@@ -46,14 +48,18 @@ def get_intersection_point(l1p1, l1p2, l2p1, l2p2):
         return np.nan
     x = (b2 * c1 - b1 * c2) / det
     y = (a1 * c2 - a2 * c1) / det
-    online1 = ((min(l1p1[0], l1p2[0]) < x) or np.isclose(min(l1p1[0], l1p2[0]), x)) \
-        and ((max(l1p1[0], l1p2[0]) > x) or np.isclose(max(l1p1[0], l1p2[0]), x)) \
-        and ((min(l1p1[1], l1p2[1]) < y) or np.isclose(min(l1p1[1], l1p2[1]), y)) \
+    online1 = (
+        ((min(l1p1[0], l1p2[0]) < x) or np.isclose(min(l1p1[0], l1p2[0]), x))
+        and ((max(l1p1[0], l1p2[0]) > x) or np.isclose(max(l1p1[0], l1p2[0]), x))
+        and ((min(l1p1[1], l1p2[1]) < y) or np.isclose(min(l1p1[1], l1p2[1]), y))
         and ((max(l1p1[1], l1p2[1]) > y) or np.isclose(max(l1p1[1], l1p2[1]), y))
-    online2 = ((min(l2p1[0], l2p2[0]) < x) or np.isclose(min(l2p1[0], l2p2[0]), x)) \
-        and ((max(l2p1[0], l2p2[0]) > x) or np.isclose(max(l2p1[0], l2p2[0]), x)) \
-        and ((min(l2p1[1], l2p2[1]) < y) or np.isclose(min(l2p1[1], l2p2[1]), y)) \
+    )
+    online2 = (
+        ((min(l2p1[0], l2p2[0]) < x) or np.isclose(min(l2p1[0], l2p2[0]), x))
+        and ((max(l2p1[0], l2p2[0]) > x) or np.isclose(max(l2p1[0], l2p2[0]), x))
+        and ((min(l2p1[1], l2p2[1]) < y) or np.isclose(min(l2p1[1], l2p2[1]), y))
         and ((max(l2p1[1], l2p2[1]) > y) or np.isclose(max(l2p1[1], l2p2[1]), y))
+    )
     if online1 and online2:
         return np.array([x, y])
 
@@ -85,9 +91,9 @@ def is_inside(p, poly):
     j = poly.shape[0] - 1
     res = False
     for i in range(poly.shape[0]):
-        if (poly[i, 1] > p[1]) != (poly[j, 1] > p[1]) and \
-            p[0] < (poly[j, 0] - poly[i, 0]) * (p[1] - poly[i, 1]) \
-                / (poly[j, 1] - poly[i, 1]) + poly[i, 0]:
+        if (poly[i, 1] > p[1]) != (poly[j, 1] > p[1]) and p[0] < (
+            poly[j, 0] - poly[i, 0]
+        ) * (p[1] - poly[i, 1]) / (poly[j, 1] - poly[i, 1]) + poly[i, 0]:
             res = not res
         j = i
         i = i + 1
@@ -96,5 +102,7 @@ def is_inside(p, poly):
 
 def sort_clockwise(points):
     center = np.mean(points, axis=0)
-    new_points = sorted(points, key=lambda p: -np.arctan2(p[1] - center[1], p[0] - center[0]))
+    new_points = sorted(
+        points, key=lambda p: -np.arctan2(p[1] - center[1], p[0] - center[0])
+    )
     return np.array(new_points)

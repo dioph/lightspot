@@ -1,17 +1,17 @@
+from multiprocessing import Pool, cpu_count
 import os
 import pickle
-from multiprocessing import Pool, cpu_count
 
-import numpy as np
 from dynesty import NestedSampler
 from dynesty.utils import merge_runs
+import numpy as np
 
-from .priors import Uniform, SameAs, Dirac
 from .macula import macula
+from .priors import Dirac, SameAs, Uniform
 
 MAX_CORES = cpu_count()
 
-__all__ = ['SpotModel']
+__all__ = ["SpotModel"]
 
 
 class SpotModel(object):
@@ -42,11 +42,33 @@ class SpotModel(object):
     tstart: start time for each of the stitched curves
     tend: end time for each of the stitched curves
     """
-    def __init__(self, t, y, nspots, dy=None,
-                 Pvec=None, k2=None, k4=None, c=None, d=None, same_limb=False,
-                 lon=None, lat=None, alpha=None, fspot=None,
-                 tmax=None, life=None, ingress=None, egress=None,
-                 U=None, B=None, tstart=None, tend=None):
+
+    def __init__(
+        self,
+        t,
+        y,
+        nspots,
+        dy=None,
+        use_gpu=False,
+        Pvec=None,
+        k2=None,
+        k4=None,
+        c=None,
+        d=None,
+        same_limb=False,
+        lon=None,
+        lat=None,
+        alpha=None,
+        fspot=None,
+        tmax=None,
+        life=None,
+        ingress=None,
+        egress=None,
+        U=None,
+        B=None,
+        tstart=None,
+        tend=None,
+    ):
         self.t = t
         self.y = y
         self.dy = dy
@@ -114,14 +136,14 @@ class SpotModel(object):
         # validate inst params
         self.mmax = np.size(self.tstart)
         if self.U is None:
-            self.U = Uniform(ndim=self.mmax, xmin=.9, xmax=1.1)
+            self.U = Uniform(ndim=self.mmax, xmin=0.9, xmax=1.1)
         if self.B is None:
-            self.B = Uniform(ndim=self.mmax, xmin=.9, xmax=1.1)
+            self.B = Uniform(ndim=self.mmax, xmin=0.9, xmax=1.1)
 
         if self.tstart is None:
-            self.tstart = np.array([self.t[0] - .01])
+            self.tstart = self.t[:1] - 0.01
         if self.tend is None:
-            self.tend = np.array([self.t[-1] + .01])
+            self.tend = self.t[-1:] + 0.01
 
         # list of fitted variable names and dictionary of fixed parameter values
         self.fixed_params = {}
@@ -141,6 +163,13 @@ class SpotModel(object):
 
         self.results = {}
 
+        if use_gpu:
+            from .cumacula import cumacula
+
+            self.solver = cumacula
+        else:
+            self.solver = macula
+
     @property
     def parameters(self):
         return {**self.star_pars, **self.spot_pars, **self.inst_pars}
@@ -151,8 +180,16 @@ class SpotModel(object):
 
     @property
     def spot_pars(self):
-        return dict(lon=self.lon, lat=self.lat, alpha=self.alpha, fspot=self.fspot,
-                    tmax=self.tmax, life=self.life, ingress=self.ingress, egress=self.egress)
+        return dict(
+            lon=self.lon,
+            lat=self.lat,
+            alpha=self.alpha,
+            fspot=self.fspot,
+            tmax=self.tmax,
+            life=self.life,
+            ingress=self.ingress,
+            egress=self.egress,
+        )
 
     @property
     def inst_pars(self):
@@ -188,9 +225,11 @@ class SpotModel(object):
         theta = np.asarray(theta)
         assert theta.size == self.N, "Parameter vector with wrong size"
         theta_star = theta[:12]
-        theta_spot = theta[12:12 + self.nspots * 8].reshape(8, -1)
-        theta_inst = theta[12 + self.nspots * 8:].reshape(2, -1)
-        yf = macula(t, theta_star, theta_spot, theta_inst, tstart=self.tstart, tend=self.tend)[0]
+        theta_spot = theta[12 : 12 + self.nspots * 8].reshape(8, -1)
+        theta_inst = theta[12 + self.nspots * 8 :].reshape(2, -1)
+        yf = self.solver(
+            t, theta_star, theta_spot, theta_inst, tstart=self.tstart, tend=self.tend
+        )[0]
         return yf
 
     def chi(self, theta):
@@ -212,39 +251,76 @@ class SpotModel(object):
 
     def loglike(self, x):
         n = self.t.size
-        c = - (n * np.log(2 * np.pi) - np.log(self.dy).sum()) / 2
+        c = -(n * np.log(2 * np.pi) - np.log(self.dy).sum()) / 2
         return c - self.chi(x) / 2
 
     def reduced_chi(self, theta):
         nu = self.t.size - self.ndim
         return self.chi(theta) / nu
 
+    def multinest(
+        self,
+        sampling_efficiency=0.01,
+        const_efficiency_mode=True,
+        n_live_points=4000,
+        **kwargs,
+    ):
+        def prior(cube):
+            return cube
+
+        def logl(cube):
+            theta = self.sample(cube)
+            n = self.t.size
+            c = -0.5 * n * np.log(2 * np.pi) - 0.5 * np.log(self.dy).sum()
+            return c - 0.5 * self.chi(theta)
+
+        results = solve(
+            LogLikelihood=logl,
+            Prior=prior,
+            n_dims=self.ndim,
+            sampling_efficiency=sampling_efficiency,
+            const_efficiency_mode=const_efficiency_mode,
+            n_live_points=n_live_points,
+            **kwargs,
+        )
+        return results
+
     def run(self, nlive=1000, cores=None, filename=None, **kwargs):
-        merge = 'no'
+        merge = "no"
         if filename is not None and os.path.isfile(filename):
-            doit = input(f'There seems to be a file named {filename}. '
-                         f'Would you like to run anyway? [y/n] ').lower()
-            if doit in ['no', 'n']:
-                with open(filename, 'br') as file:
+            doit = input(
+                f"There seems to be a file named {filename}. "
+                f"Would you like to run anyway? [y/n] "
+            ).lower()
+            if doit in ["no", "n"]:
+                with open(filename, "br") as file:
                     self.results = pickle.load(file)
                 return
         if cores is None or cores > MAX_CORES:
             cores = MAX_CORES
         try:
             with Pool(cores) as pool:
-                sampler = NestedSampler(self.loglike, self.sample, self.N, npdim=self.ndim,
-                                        nlive=nlive, pool=pool, queue_size=cores, **kwargs)
+                sampler = NestedSampler(
+                    self.loglike,
+                    self.sample,
+                    self.N,
+                    npdim=self.ndim,
+                    nlive=nlive,
+                    pool=pool,
+                    queue_size=cores,
+                    **kwargs,
+                )
                 sampler.run_nested()
         except KeyboardInterrupt:
             pass
         if filename is not None and os.path.isfile(filename):
-            merge = input('Merge new run with previous data? [y/n] ').lower()
-        if merge in ['no', 'n']:
+            merge = input("Merge new run with previous data? [y/n] ").lower()
+        if merge in ["no", "n"]:
             self.results = sampler.results
         else:
-            with open(filename, 'br') as file:
+            with open(filename, "br") as file:
                 res = pickle.load(file)
             self.results = merge_runs([sampler.results, res])
         if filename is not None:
-            with open(filename, 'bw') as file:
+            with open(filename, "bw") as file:
                 pickle.dump(self.results, file)
