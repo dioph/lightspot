@@ -6,10 +6,11 @@ name = "pypi"
 [packages]
 dynesty = ">= 1.0"
 matplotlib = "*"
+numba = "*"
 numpy = "*"
 pybind11 = ">= 2.2"
 scipy = ">= 0.19"
-numba = "*"
+
 
 [dev-packages]
 black = "==20.8b1"

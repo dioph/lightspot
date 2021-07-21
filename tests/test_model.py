@@ -1,3 +1,5 @@
+import os
+
 from lightspot.model import SpotModel, macula
 import numpy as np
 import pytest
@@ -5,40 +7,10 @@ import pytest
 
 @pytest.fixture
 def theta():
-    return np.array(
-        [
-            1.04719755e00,
-            9.00000000e00,
-            0.00000000e00,
-            0.00000000e00,
-            0.00000000e00,
-            7.00000000e-01,
-            0.00000000e00,
-            0.00000000e00,
-            0.00000000e00,
-            7.00000000e-01,
-            0.00000000e00,
-            0.00000000e00,
-            1.04719755e00,
-            -1.57079633e00,
-            5.23598776e-01,
-            5.23598776e-01,
-            2.09439510e-01,
-            1.04719755e-01,
-            2.20000000e-01,
-            2.20000000e-01,
-            0.00000000e00,
-            0.00000000e00,
-            2.00000000e02,
-            2.00000000e02,
-            5.00000000e00,
-            5.00000000e00,
-            5.00000000e00,
-            5.00000000e00,
-            1.00000000e00,
-            1.00000000e00,
-        ]
-    )
+    star = np.array([1, 9, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 0, 0])
+    spot = np.array([1, -1.5, 0.5, 0.5, 0.2, 0.1, 0.2, 0.2, 0, 0, 200, 200, 5, 5, 5, 5])
+    inst = np.array([1, 1])
+    return np.hstack([star, spot, inst])
 
 
 @pytest.fixture
@@ -87,5 +59,7 @@ def test_sample_shapes(model, theta):
 
 
 def test_use_gpu_same_result(model, t, y, theta):
+    if "CUDA_PATH" not in os.environ:
+        pytest.skip("skipping CUDA tests")
     model_gpu = SpotModel(t, y, 2, use_gpu=True)
     assert np.allclose(y, model_gpu.predict(t, theta))

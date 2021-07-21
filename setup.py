@@ -110,10 +110,11 @@ class BuildExt(build_ext):
 
 install_requires = [
     "dynesty >= 1.0",
+    "matplotlib",
+    "numba",
     "numpy",
     "pybind11 >= 2.2",
     "scipy >= 0.19",
-    "numba",
 ]
 
 extras_require = {
