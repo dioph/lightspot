@@ -1,4 +1,4 @@
-import os
+from numba import cuda
 
 from lightspot.model import SpotModel, macula
 import numpy as np
@@ -59,7 +59,7 @@ def test_sample_shapes(model, theta):
 
 
 def test_use_gpu_same_result(model, t, y, theta):
-    if "CUDA_PATH" not in os.environ:
+    if not cuda.is_available():
         pytest.skip("skipping CUDA tests")
     model_gpu = SpotModel(t, y, 2, use_gpu=True)
     assert np.allclose(y, model_gpu.predict(t, theta))
