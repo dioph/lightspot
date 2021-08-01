@@ -22,12 +22,17 @@ ext_modules = [
 
 install_requires = [
     "dynesty >= 1.0",
+    "h5py",
     "matplotlib",
-    "numba",
     "scipy >= 0.19",
+    "ultranest >= 3.0",
 ]
 
 extras_require = {
+    "cuda": [
+        "cupy",
+        "numba",
+    ],
     "docs": [
         "jupyter",
         "myst-nb<0.11",
