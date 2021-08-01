@@ -1,6 +1,7 @@
-from lightspot.macula import macula
 import numpy as np
 import pytest
+
+from lightspot.macula import macula
 
 
 @pytest.fixture
@@ -29,38 +30,35 @@ def theta_inst():
     return np.array([[1.0, 1.0], [1.0, 1.0]])
 
 
-def test_no_segfault_with_big_time_array(theta_star, theta_spot, theta_inst):
+@pytest.fixture
+def theta(theta_star, theta_spot, theta_inst):
+    theta = np.hstack([theta_star, theta_spot.flatten(), theta_inst.flatten()])
+    return np.array([theta])
+
+
+def test_no_segfault_with_big_time_array(theta):
     t = np.arange(0, 30, 0.002)  # size 15000
     _ = macula(
         t,
-        theta_star,
-        theta_spot,
-        theta_inst,
+        theta,
         [-0.01, 9.99],
         [30.0, 10.0],
-        derivatives=True,
-        temporal=True,
-        tdeltav=True,
     )
 
 
-def test_bad_args_throw_exceptions(theta_star, theta_spot, theta_inst):
+def test_bad_args_throw_exceptions(theta):
     t = np.arange(0, 30, 0.02)
     # wrong size of tstart/tend
     with pytest.raises(RuntimeError):
-        _ = macula(t, theta_star, theta_spot, theta_inst, [-0.01], [30.0])
+        _ = macula(t, theta, [-0.01], [30.0])
     # too few theta_spot rows
     with pytest.raises(RuntimeError):
-        _ = macula(
-            t, theta_star, theta_spot[:-1], theta_inst, [-0.01, 9.99], [10.0, 30.0]
-        )
+        _ = macula(t, theta[:, :-1], [-0.01, 9.99], [10.0, 30.0])
     # wrong theta_star ndim
     with pytest.raises(RuntimeError):
         _ = macula(
             t,
-            np.array([theta_star]),
-            theta_spot,
-            theta_inst,
+            np.array([theta]),
             [-0.01, 9.99],
             [10.0, 30.0],
         )
