@@ -37,7 +37,7 @@ extras_require = {
         "jupyter >= 1.0",
         "myst-nb >= 0.17",
         "numpydoc",
-        "sphinx_rtd_theme",
+        "pydata-sphinx-theme",
     ],
     "test": [
         "black == 22.3.0",
