@@ -1,8 +1,9 @@
-from multiprocessing import Pool, cpu_count
+from multiprocessing import cpu_count
 import os
 import pickle
 
-from dynesty import NestedSampler
+from dynesty import DynamicNestedSampler
+import dynesty.pool as dypool
 from dynesty.utils import merge_runs
 import numpy as np
 from ultranest import ReactiveNestedSampler, stepsampler
@@ -13,10 +14,10 @@ from .priors import QuadraticLD, SineUniform, Uniform
 
 MAX_CORES = cpu_count()
 
-__all__ = ["NestedSolver"]
+__all__ = ["AbstractModel", "SpotModel", "SimpleSpotModel"]
 
 
-class NestedSolver(object):
+class AbstractModel(object):
     def __init__(self, defaults, t, y, dy=None, priors=None):
         self.t = t
         self.y = y.astype(t.dtype)
@@ -144,13 +145,14 @@ class NestedSolver(object):
 
     def prior_transform(self, cube):
         cube = np.atleast_2d(cube)
-        theta = np.empty((cube.shape[0], self.jmax), dtype=self.t.dtype)
-        if cube.shape[1] != self.ndim:
+        batch_size, size = cube.shape[:-1], cube.shape[-1]
+        theta = np.empty(batch_size + (self.jmax,))
+        if size != self.ndim:
             raise ValueError("Dimensionality mismatch")
         i, j = 0, 0
         for key, val in self.id_priors.items():
             j += val.n_inputs
-            theta[:, list(key)] = val(cube[:, i:j])
+            theta[..., list(key)] = val(cube[..., i:j])
             i = j
         return theta
 
@@ -169,7 +171,7 @@ class NestedSolver(object):
         """
         yf = self.predict(self.t, theta)
         sse = np.sum(np.square((yf - self.y) / self.dy), axis=1)
-        return sse
+        return sse.astype(float)
 
     def loglike(self, theta):
         return self.norm_c - self.chi(theta) / 2
@@ -186,10 +188,8 @@ class NestedSolver(object):
         # TODO
         pass
 
-    def nested_sample(self, log_dir=None, n_slice=0, **kwargs):
-        def logl(cube):
-            theta = self.prior_transform(cube)
-            return self.loglike(theta)
+    def nested_sample(self, resume=True, log_dir=None, n_slice=0, **kwargs):
+        logl = lambda cube: self.loglike(self.prior_transform(cube))
 
         self.sampler = ReactiveNestedSampler(
             self.fit_names,
@@ -204,9 +204,10 @@ class NestedSolver(object):
         results = self.sampler.run(**kwargs)
         results = self._post_processing(results)
         self.sampler.run_sequence["samples"] = results["weighted_samples"]["points"]
+        self.logz = results["logz"]
         return results
 
-    def run(self, nlive=1000, cores=None, filename=None, **kwargs):
+    def run(self, nlive=1000, cores=None, filename=None, seed=42, **kwargs):
         merge = "no"
         if filename is not None and os.path.isfile(filename):
             doit = input(
@@ -219,16 +220,18 @@ class NestedSolver(object):
                 return
         if cores is None or cores > MAX_CORES:
             cores = MAX_CORES
+        rng = np.random.default_rng(seed)
         try:
-            with Pool(cores) as pool:
-                sampler = NestedSampler(
-                    self.loglike,
-                    self.prior_transform,
+            with dypool.Pool(cores, self.loglike, self.prior_transform) as pool:
+                sampler = DynamicNestedSampler(
+                    pool.loglike,
+                    pool.prior_transform,
                     self.jmax,
                     npdim=self.ndim,
                     nlive=nlive,
+                    sample="rslice",
                     pool=pool,
-                    queue_size=cores,
+                    rstate=rng,
                     **kwargs,
                 )
                 sampler.run_nested()
@@ -271,7 +274,7 @@ class NestedSolver(object):
         band.shade(q=0.49, color=color, alpha=0.2)
 
 
-class SpotModel(NestedSolver):
+class SpotModel(AbstractModel):
     def __init__(self, t, y, nspots, dy=None, priors=None, tstart=None, tend=None):
         self.nspots = nspots
         if tstart is None:
@@ -323,3 +326,47 @@ class SpotModel(NestedSolver):
             raise ValueError("Parameter vector with wrong size.")
         yf = self.func(t, theta, self.tstart, self.tend)
         return yf
+
+
+class SimpleSpotModel(AbstractModel):
+    def __init__(self, t, y, nspots, dy=None, priors=None):
+        self.nspots = nspots
+        defaults = {
+            "i": SineUniform(0, 1),
+            "P_eq": Uniform(0, 50),
+            "kappa": Uniform(-1, 1),
+            "tau": Uniform(xmin=0, xmax=500),
+            "lambda": Uniform(ndim=self.nspots, xmin=-np.pi, xmax=np.pi),
+            "beta": Uniform(ndim=self.nspots, xmin=-np.pi / 2, xmax=np.pi / 2),
+            "f_max": Uniform(ndim=self.nspots, xmin=0, xmax=0.5),
+            "t_max": Uniform(ndim=self.nspots, xmin=t[0], xmax=t[-1]),
+        }
+        super(SimpleSpotModel, self).__init__(defaults, t, y, dy, priors)
+
+    def predict(self, t, theta):
+        theta = np.atleast_2d(theta).astype(t.dtype)
+        if theta.shape[1] != self.jmax:
+            raise ValueError("Parameter vector with wrong size.")
+        y = np.ones((theta.shape[0], t.size), dtype=t.dtype)
+        i, peq, kappa, tau, *theta_spot = theta.T
+        i = i.reshape(-1, 1)
+        peq = peq.reshape(-1, 1)
+        kappa = kappa.reshape(-1, 1)
+        tau = tau.reshape(-1, 1)
+        cosi = np.cos(i)
+        sini = np.sin(i)
+        tau_out = 4 * tau
+        tau_in = np.maximum(8.0, 0.2 * tau_out)
+        for k in range(self.nspots):
+            lon = theta_spot[self.nspots * 0 + k].reshape(-1, 1)
+            lat = theta_spot[self.nspots * 1 + k].reshape(-1, 1)
+            fmax = theta_spot[self.nspots * 2 + k].reshape(-1, 1)
+            tmax = theta_spot[self.nspots * 3 + k].reshape(-1, 1)
+            pk = peq / (1 - kappa * np.sin(lat) ** 2)
+            phi = 2 * np.pi * (t - tmax) / pk + lon
+            cosbeta = np.cos(phi) * np.cos(lat) * cosi + np.sin(lat) * sini
+            fk = np.empty_like(y)
+            fk[tmax < t] = (fmax * np.exp((tmax - t) / (2 * tau_out)))[tmax < t]
+            fk[t < tmax] = (fmax * np.exp((t - tmax) / (2 * tau_in)))[t < tmax]
+            y -= fk * np.maximum(cosbeta, 0)
+        return y

@@ -14,7 +14,7 @@ Prior functions
 Modeler classes
 ===============
 
-.. automodule:: lightspot.model
+.. automodule:: lightspot.sampler
     :members:
     :undoc-members:
     :private-members:

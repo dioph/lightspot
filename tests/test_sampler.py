@@ -2,12 +2,12 @@ import numpy as np
 import pytest
 
 from lightspot.priors import Dirac, Uniform
-from lightspot.sampler import NestedSolver
+from lightspot.sampler import AbstractModel
 
 
 @pytest.fixture
 def linear_model():
-    class LinearRegression(NestedSolver):
+    class LinearRegression(AbstractModel):
         def __init__(self, t, y, dy=None, priors=None):
             defaults = {"a": Uniform(-100, 100), "b": Uniform(-100, 100)}
             super(LinearRegression, self).__init__(defaults, t, y, dy, priors)
