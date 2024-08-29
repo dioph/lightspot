@@ -11,8 +11,8 @@ template<typename T>
 T zeta(T x)
 {
   const T halfpi = T(1.5707963267948966);
-  if (x < 0.0) return T(1.0);
-  else if (x > halfpi) return T(0.0);
+  if (x <= 0.0) return T(1.0);
+  else if (x >= halfpi) return T(0.0);
   else return std::cos(x);
 }
 
@@ -160,16 +160,15 @@ npy<T> macula(npy<T> t, npy<T> theta, npy<T> tstart, npy<T> tend)
       theta_star[j] = theta_ptr[trial * jmax + j];
     c[0] = T(1.0);
     d[0] = T(1.0);
+    Fab0 = T(1.0);
     for (int n = 1; n < pLD; n++)
     {
       c[n] = theta_ptr[trial * jmax + n + 3];
       d[n] = theta_ptr[trial * jmax + n + 7];
       c[0] -= c[n];
       d[0] -= d[n];
-    }
-    Fab0 = T(1.0);
-    for (int n = 0; n < pLD; n++)
       Fab0 -= (n * c[n]) / (n + T(4.0));
+    }
     for (int i = 0; i < ndata; i++)
     {
       for (int m = 0; m < mmax; m++)

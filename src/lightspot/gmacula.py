@@ -11,9 +11,9 @@ _kernel_cache = {}
 @cuda.jit(device=True)
 def zeta_64(x):
     halfpi = 1.5707963267948966
-    if x < 0.0:
+    if x <= 0.0:
         return 1.0
-    elif x > halfpi:
+    elif x >= halfpi:
         return 0.0
     return cos(x)
 
@@ -21,9 +21,9 @@ def zeta_64(x):
 @cuda.jit(device=True)
 def zeta_32(x):
     halfpi = float32(1.5707963)
-    if x < float32(0.0):
+    if x <= float32(0.0):
         return float32(1.0)
-    elif x > halfpi:
+    elif x >= halfpi:
         return float32(0.0)
     return cos(x)
 
@@ -76,7 +76,7 @@ def macula_singlespot_64(t, theta_star, c, d, theta_spot):
     SinPhi0 = sin(Phi0)
     CosPhi0 = cos(Phi0)
     Prot = theta_star[1] / (
-        1.0 - theta_star[2] * SinPhi0 ** 2.0 - theta_star[3] * SinPhi0 ** 4.0
+        1.0 - theta_star[2] * SinPhi0**2.0 - theta_star[3] * SinPhi0**4.0
     )
     alphamax = theta_spot[2]
     fspot = theta_spot[3]
@@ -236,13 +236,12 @@ def macula_kernel_64(t, theta, tstart, tend, fmod):
             theta_star[j] = theta[trial, j]
         c[0] = 1.0
         d[0] = 1.0
+        Fab0 = 1.0
         for n in range(1, pLD):
             c[n] = theta[trial, n + 3]
             d[n] = theta[trial, n + 7]
             c[0] -= c[n]
             d[0] -= d[n]
-        Fab0 = 1.0
-        for n in range(pLD):
             Fab0 -= (n * c[n]) / (n + 4.0)
         for i in range(y, ndata, dy):
             for m in range(mmax):
@@ -291,13 +290,12 @@ def macula_kernel_32(t, theta, tstart, tend, fmod):
             theta_star[j] = theta[trial, j]
         c[0] = float32(1.0)
         d[0] = float32(1.0)
+        Fab0 = float32(1.0)
         for n in range(1, pLD):
             c[n] = theta[trial, n + 3]
             d[n] = theta[trial, n + 7]
             c[0] -= c[n]
             d[0] -= d[n]
-        Fab0 = float32(1.0)
-        for n in range(pLD):
             Fab0 -= (n * c[n]) / (n + float32(4.0))
         for i in range(y, ndata, dy):
             for m in range(mmax):
@@ -334,12 +332,12 @@ def _macula(t, theta, tstart, tend, fmod):
             kernel = _kernel_cache[(str(numba_type))] = cuda.jit(
                 signature, fastmath=True
             )(macula_kernel_32)
-            print("Registers(32)", kernel._func.get().attrs.regs)
+            print("Registers(32)", kernel.get_regs_per_thread())
         elif fmod.dtype == "float64":
             kernel = _kernel_cache[(str(numba_type))] = cuda.jit(
                 signature, fastmath=True
             )(macula_kernel_64)
-            print("Registers(64)", kernel._func.get().attrs.regs)
+            print("Registers(64)", kernel.get_regs_per_thread())
 
     gpu = cuda.get_current_device()
     numSM = gpu.MULTIPROCESSOR_COUNT
