@@ -45,6 +45,13 @@ class NestedSolver(object):
                 id_mask = np.hstack([param_ids[k] for k in key])
             self.id_priors[tuple(id_mask)] = val
         self.ndim = sum([prior.n_inputs for prior in self.priors.values()])
+        # define self.wrap
+        i, j = 0, 0
+        self.wrap = np.empty(self.ndim)
+        for key, val in self.id_priors.items():
+            j += val.n_inputs
+            self.wrap[i:j] = val.wrap
+            i = j
         # list of fitted variable names and dictionary of fixed parameter values
         self.fit_names = []
         self.fixed_params = {}
@@ -185,7 +192,12 @@ class NestedSolver(object):
             return self.loglike(theta)
 
         self.sampler = ReactiveNestedSampler(
-            self.fit_names, logl, log_dir=log_dir, resume=True, vectorized=True
+            self.fit_names,
+            logl,
+            log_dir=log_dir,
+            resume=resume,
+            wrapped_params=self.wrap,
+            vectorized=True,
         )
         if n_slice > 0:
             self.sampler.stepsampler = stepsampler.RegionSliceSampler(nsteps=n_slice)
@@ -277,7 +289,7 @@ class SpotModel(NestedSolver):
             "kappa_4": Uniform(-1, 1),
             "c": QuadraticLD(),
             "d": QuadraticLD(),
-            "lambda": Uniform(ndim=self.nspots, xmin=-np.pi, xmax=np.pi),
+            "lambda": Uniform(ndim=self.nspots, xmin=-np.pi, xmax=np.pi, wrap=True),
             "beta": Uniform(ndim=self.nspots, xmin=-np.pi / 2, xmax=np.pi / 2),
             "alpha": Uniform(ndim=self.nspots, xmin=0, xmax=np.pi / 4),
             "rho": Uniform(ndim=self.nspots, xmin=0, xmax=1),
