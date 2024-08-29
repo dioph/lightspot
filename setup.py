@@ -34,13 +34,13 @@ extras_require = {
         "numba",
     ],
     "docs": [
-        "jupyter",
-        "myst-nb<0.11",
+        "jupyter >= 1.0",
+        "myst-nb >= 0.17",
         "numpydoc",
         "sphinx_rtd_theme",
     ],
     "test": [
-        "black==20.8b1",
+        "black == 22.3.0",
         "flake8",
         "isort",
         "pytest",
@@ -48,6 +48,12 @@ extras_require = {
         "tox",
     ],
 }
+
+setup_requires = [
+    "setuptools >= 46.0",
+    "pybind11 >= 2.6",
+    "cython",
+]
 
 setuptools.setup(
     name="lightspot",
@@ -64,6 +70,7 @@ setuptools.setup(
     ext_modules=ext_modules,
     install_requires=install_requires,
     extras_require=extras_require,
+    setup_requires=setup_requires,
     cmdclass={"build_ext": build_ext},
     classifiers=[
         "Programming Language :: Python :: 3",
