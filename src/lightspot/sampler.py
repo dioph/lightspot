@@ -6,6 +6,7 @@ from dynesty import NestedSampler
 from dynesty.utils import merge_runs
 import numpy as np
 from ultranest import ReactiveNestedSampler, stepsampler
+from ultranest.plot import PredictionBand
 
 from .macula import macula
 from .priors import QuadraticLD, SineUniform, Uniform
@@ -248,6 +249,14 @@ class NestedSolver(object):
             results["maximum_likelihood"]["point"]
         ).tolist()
         return results
+
+    def plot_fit(self, t_grid, color="k"):
+        band = PredictionBand(t_grid)
+        for theta in self.sampler.results["samples"]:
+            band.add(self.predict(t_grid, theta).flatten())
+        band.line(color=color)
+        band.shade(color=color, alpha=0.3)
+        band.shade(q=0.49, color=color, alpha=0.2)
 
 
 class SpotModel(NestedSolver):
