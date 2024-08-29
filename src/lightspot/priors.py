@@ -5,17 +5,19 @@ from .utils import polygon_intersection, triangle_area, triangulate
 
 
 class Prior(object):
-    def __init__(self, n_inputs, n_outputs):
+    def __init__(self, n_inputs, n_outputs, input_names="", wrap=False):
         self.n_inputs = n_inputs
         self.n_outputs = n_outputs
+        input_names = np.full(self.n_inputs, input_names)
+        self.wrap = wrap
 
     def __call__(self, x):
         return x
 
 
 class Duplicate(Prior):
-    def __init__(self, prior):
-        super(Duplicate, self).__init__(prior.n_inputs, 2 * prior.n_outputs)
+    def __init__(self, prior, **kwargs):
+        super(Duplicate, self).__init__(prior.n_inputs, 2 * prior.n_outputs, **kwargs)
         self.prior = prior
 
     def __call__(self, x):
@@ -24,11 +26,11 @@ class Duplicate(Prior):
 
 
 class Stack(Prior):
-    def __init__(self, prior1, prior2):
+    def __init__(self, prior1, prior2, **kwargs):
         if prior1.n_inputs != prior2.n_inputs:
             raise ValueError("Can't stack priors with different number of inputs!")
         super(Stack, self).__init__(
-            prior1.n_inputs, prior1.n_outputs + prior2.n_outputs
+            prior1.n_inputs, prior1.n_outputs + prior2.n_outputs, **kwargs
         )
         self.prior1 = prior1
         self.prior2 = prior2
@@ -36,7 +38,7 @@ class Stack(Prior):
     def __call__(self, x):
         out1 = self.prior1(x)
         out2 = self.prior2(x)
-        return np.hstack[out1, out2]
+        return np.hstack([out1, out2])
 
 
 # UNIVARIATE DISTRIBUTIONS
@@ -55,8 +57,8 @@ class Dirac(Prior):
 
 
 class Uniform(Prior):
-    def __init__(self, xmin=0.0, xmax=1.0, ndim=1):
-        super(Uniform, self).__init__(ndim, ndim)
+    def __init__(self, xmin=0.0, xmax=1.0, ndim=1, **kwargs):
+        super(Uniform, self).__init__(ndim, ndim, **kwargs)
         self.xmin = np.asarray(xmin)
         self.xmax = np.asarray(xmax)
 
@@ -69,8 +71,8 @@ class Uniform(Prior):
 
 
 class SineUniform(Prior):
-    def __init__(self, sinxmin=0.0, sinxmax=1.0, ndim=1):
-        super(SineUniform, self).__init__(ndim, ndim)
+    def __init__(self, sinxmin=0.0, sinxmax=1.0, ndim=1, **kwargs):
+        super(SineUniform, self).__init__(ndim, ndim, **kwargs)
         self.sinxmin = np.asarray(sinxmin)
         self.sinxmax = np.asarray(sinxmax)
 
@@ -82,8 +84,8 @@ class SineUniform(Prior):
 
 
 class LogUniform(Prior):
-    def __init__(self, logxmin=0.0, logxmax=1.0, ndim=1):
-        super(LogUniform, self).__init__(ndim, ndim)
+    def __init__(self, logxmin=0.0, logxmax=1.0, ndim=1, **kwargs):
+        super(LogUniform, self).__init__(ndim, ndim, **kwargs)
         self.logxmin = np.asarray(logxmin)
         self.logxmax = np.asarray(logxmax)
 
@@ -95,8 +97,8 @@ class LogUniform(Prior):
 
 
 class Normal(Prior):
-    def __init__(self, mu=0.0, sd=1.0, ndim=1):
-        super(Normal, self).__init__(ndim, ndim)
+    def __init__(self, mu=0.0, sd=1.0, ndim=1, **kwargs):
+        super(Normal, self).__init__(ndim, ndim, **kwargs)
         self.mu = np.asarray(mu)
         self.sd = np.asarray(sd)
 
@@ -108,8 +110,8 @@ class Normal(Prior):
 
 
 class TruncNormal(Prior):
-    def __init__(self, mu=0.0, sd=1.0, xmin=0.0, xmax=1.0, ndim=1):
-        super(TruncNormal, self).__init__(ndim, ndim)
+    def __init__(self, mu=0.0, sd=1.0, xmin=0.0, xmax=1.0, ndim=1, **kwargs):
+        super(TruncNormal, self).__init__(ndim, ndim, **kwargs)
         self.mu = np.asarray(mu)
         self.sd = np.asarray(sd)
         self.xmin = np.asarray(xmin)
@@ -125,8 +127,8 @@ class TruncNormal(Prior):
 
 
 class LogNormal(Prior):
-    def __init__(self, logmu=0.0, logsd=1.0, ndim=1):
-        super(LogNormal, self).__init__(ndim, ndim)
+    def __init__(self, logmu=0.0, logsd=1.0, ndim=1, **kwargs):
+        super(LogNormal, self).__init__(ndim, ndim, **kwargs)
         self.logmu = np.asarray(logmu)
         self.logsd = np.asarray(logsd)
 
@@ -141,8 +143,8 @@ class LogNormal(Prior):
 
 
 class Triangular(Prior):
-    def __init__(self, triangle):
-        super(Triangular, self).__init__(2, 2)
+    def __init__(self, triangle, **kwargs):
+        super(Triangular, self).__init__(2, 2, **kwargs)
         self.triangle = triangle.reshape(-1, 3, 2)
 
     def __call__(self, u):
@@ -159,8 +161,8 @@ class Triangular(Prior):
 
 
 class Polygon(Prior):
-    def __init__(self, poly):
-        super(Polygon, self).__init__(2, 2)
+    def __init__(self, poly, **kwargs):
+        super(Polygon, self).__init__(2, 2, **kwargs)
         self.triangles = triangulate(poly)
         area = np.sum([triangle_area(t) for t in self.triangles])
         self.relative_area = np.array([triangle_area(t) / area for t in self.triangles])
@@ -191,8 +193,9 @@ class ConstrainPvec(Prior):
         vmax=1e9,
         rmin=1e-9,
         rmax=1e9,
+        **kwargs,
     ):
-        super(ConstrainPvec, self).__init__(2, 2)
+        super(ConstrainPvec, self).__init__(2, 2, **kwargs)
         k = 2 * np.pi / 86400
         wmin, wmax = np.array([vmin / rmax, vmax / rmin]) / 695700
         poly1 = np.array([[0, 0], [1, k / wmin], [1, k / wmax]])
@@ -207,15 +210,15 @@ class ConstrainPvec(Prior):
             raise ValueError(f"Got {u.shape[1]} inputs, expected {self.n_inputs}.")
         sini, peq = self.poly(u).T
         i = np.arcsin(sini)
-        return np.vstack(i, peq).T
+        return np.vstack([i, peq]).T
 
 
 # LDC DISTRIBUTIONS
 
 
 class QuadraticLD(Prior):
-    def __init__(self, amin=0.0, amax=2.0, bmin=-1.0, bmax=1.0):
-        super(QuadraticLD, self).__init__(2, 4)
+    def __init__(self, amin=0.0, amax=2.0, bmin=-1.0, bmax=1.0, **kwargs):
+        super(QuadraticLD, self).__init__(2, 4, **kwargs)
         poly1 = np.array([[amin, bmin], [amin, bmax], [amax, bmax], [amax, bmin]])
         poly2 = np.array([[0, 0], [0, 1], [2, -1]])
         self.poly = polygon_intersection(poly1, poly2)
@@ -233,8 +236,8 @@ class QuadraticLD(Prior):
 
 
 class ThreeParamLD(Prior):
-    def __init__(self):
-        super(ThreeParamLD, self).__init__(3, 4)
+    def __init__(self, **kwargs):
+        super(ThreeParamLD, self).__init__(3, 4, **kwargs)
 
     def __call__(self, u):
         u = np.atleast_2d(u)

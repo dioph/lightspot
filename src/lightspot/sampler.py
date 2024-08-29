@@ -48,16 +48,16 @@ class NestedSolver(object):
         self.fit_names = []
         self.fixed_params = {}
         # number of prior parameters (unit cube)
+        i = 0
         for key, val in self.priors.items():
             if val.n_inputs == 0:
                 self.fixed_params[key] = val
             else:
-                if val.n_inputs != 1:
-                    for i in range(val.n_inputs):
-                        # TODO: combo keys
-                        self.fit_names.append(self._latexify(key, i + 1))
-                else:
-                    self.fit_names.append(self._latexify(key))
+                # TODO
+                for j in range(val.n_inputs):
+                    # self.fit_names.append(val.input_names[j])
+                    self.fit_names.append(f"{str(key)[:20]}_{{{i}}}")
+                    i += 1
 
     def _validate_params(self, priors):
         if priors is None:
