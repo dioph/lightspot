@@ -116,7 +116,7 @@ class TruncNormal(Prior):
         self.sd = np.asarray(sd)
         self.xmin = np.asarray(xmin)
         self.xmax = np.asarray(xmax)
-        self.xmin = ((self.xmin - self.mu) / self.sd,)
+        self.xmin = (self.xmin - self.mu) / self.sd
         self.xmax = (self.xmax - self.mu) / self.sd
 
     def __call__(self, q):
