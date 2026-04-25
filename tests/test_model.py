@@ -18,7 +18,7 @@ def theta():
     star = np.array([1, 9, 0, 0, 0, 0.7, 0, 0, 0, 0.7, 0, 0])
     spot = np.array([1, -1.5, 0.5, 0.5, 0.2, 0.1, 0.2, 0.2, 0, 0, 200, 200, 5, 5, 5, 5])
     inst = np.array([1, 1])
-    return np.hstack([star, spot, inst])
+    return np.hstack([star, spot, inst, [0.0]])
 
 
 @pytest.fixture
@@ -44,7 +44,7 @@ def test_perfect_fit_chisqr(model, t, y, theta):
 def test_model_ndim(model, t, y, theta):
     assert model.jmax == theta.size
     new_model = SpotModel(t, y, 1)
-    assert new_model.ndim == 18
+    assert new_model.ndim == 19
 
 
 def test_sample_shapes(model, theta):

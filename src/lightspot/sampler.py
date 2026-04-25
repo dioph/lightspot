@@ -10,7 +10,7 @@ from ultranest import ReactiveNestedSampler, stepsampler
 from ultranest.plot import PredictionBand
 
 from .macula import macula
-from .priors import QuadraticLD, SineUniform, Uniform
+from .priors import LogUniform, QuadraticLD, SineUniform, Uniform
 
 MAX_CORES = cpu_count()
 
@@ -20,11 +20,13 @@ __all__ = ["AbstractModel", "SpotModel", "SimpleSpotModel"]
 class AbstractModel(object):
     def __init__(self, defaults, t, y, dy=None, priors=None):
         self.t = t
-        self.y = y.astype(t.dtype)
+        self._dtype = t.dtype
+        self.y = y.astype(self._dtype)
         if dy is None:
             dy = np.ones_like(self.y)
-        self.dy = dy.astype(self.y.dtype)
-        self.norm_c = -(self.t.size * np.log(2 * np.pi) - np.log(self.dy).sum()) / 2
+        self.dy = dy.astype(self._dtype)
+        self.nlog2pi = self.t.size * np.log(2 * np.pi)
+        self.norm_c = -self.nlog2pi / 2 - np.log(self.dy).sum()
         self.defaults = defaults
         self.param_names = list(self.defaults.keys())
         param_id_bounds = np.append(
@@ -302,6 +304,7 @@ class SpotModel(AbstractModel):
             "tau_out": Uniform(ndim=self.nspots, xmin=0, xmax=baseline),
             "U": Uniform(ndim=self.mmax, xmin=0.9, xmax=1.1),
             "B": Uniform(ndim=self.mmax, xmin=0.9, xmax=1.1),
+            "jitter": LogUniform(ndim=1, logxmin=-10, logxmax=0),
         }
         super(SpotModel, self).__init__(defaults, t, y, dy, priors)
         self.func = macula
@@ -321,11 +324,28 @@ class SpotModel(AbstractModel):
         yf: array-like with shape (ndata,)
             model flux
         """
-        theta = np.atleast_2d(theta).astype(t.dtype)
-        if theta.shape[1] != self.jmax:
+        theta = np.atleast_2d(theta)[..., :-1].astype(self._dtype)
+        if theta.shape[1] != (self.jmax - 1):
             raise ValueError("Parameter vector with wrong size.")
         yf = self.func(t, theta, self.tstart, self.tend)
         return yf
+
+    def eff_var(self, theta):
+        theta = np.atleast_2d(theta).astype(self._dtype)
+        jitter = theta[..., -1]
+        eff_var = self.dy**2 + jitter[:, None] ** 2
+        return eff_var
+
+    def chi(self, theta):
+        eff_var = self.eff_var(theta)
+        yf = self.predict(self.t, theta)
+        sse = np.sum((yf - self.y) ** 2 / eff_var, axis=1)
+        return sse.astype(float)
+
+    def loglike(self, theta):
+        eff_var = self.eff_var(theta)
+        norm_c = -(self.nlog2pi - np.log(eff_var).sum(axis=1)) / 2
+        return norm_c - self.chi(theta) / 2
 
 
 class SimpleSpotModel(AbstractModel):
@@ -340,15 +360,16 @@ class SimpleSpotModel(AbstractModel):
             "beta": Uniform(ndim=self.nspots, xmin=-np.pi / 2, xmax=np.pi / 2),
             "f_max": Uniform(ndim=self.nspots, xmin=0, xmax=0.5),
             "t_max": Uniform(ndim=self.nspots, xmin=t[0], xmax=t[-1]),
+            "jitter": LogUniform(ndim=1, logxmin=-10, logxmax=0),
         }
         super(SimpleSpotModel, self).__init__(defaults, t, y, dy, priors)
 
     def predict(self, t, theta):
-        theta = np.atleast_2d(theta).astype(t.dtype)
+        theta = np.atleast_2d(theta).astype(self._dtype)
         if theta.shape[1] != self.jmax:
             raise ValueError("Parameter vector with wrong size.")
-        y = np.ones((theta.shape[0], t.size), dtype=t.dtype)
-        i, peq, kappa, tau, *theta_spot = theta.T
+        y = np.ones((theta.shape[0], t.size), dtype=self._dtype)
+        i, peq, kappa, tau, *theta_spot, jitter = theta.T
         i = i.reshape(-1, 1)
         peq = peq.reshape(-1, 1)
         kappa = kappa.reshape(-1, 1)
@@ -370,3 +391,20 @@ class SimpleSpotModel(AbstractModel):
             fk[t < tmax] = (fmax * np.exp((t - tmax) / (2 * tau_in)))[t < tmax]
             y -= fk * np.maximum(cosbeta, 0)
         return y
+
+    def eff_var(self, theta):
+        theta = np.atleast_2d(theta).astype(self._dtype)
+        jitter = theta[..., -1]
+        eff_var = self.dy**2 + jitter[:, None] ** 2
+        return eff_var
+
+    def chi(self, theta):
+        eff_var = self.eff_var(theta)
+        yf = self.predict(self.t, theta)
+        sse = np.sum((yf - self.y) ** 2 / eff_var, axis=1)
+        return sse.astype(float)
+
+    def loglike(self, theta):
+        eff_var = self.eff_var(theta)
+        norm_c = -(self.nlog2pi - np.log(eff_var).sum(axis=1)) / 2
+        return norm_c - self.chi(theta) / 2
