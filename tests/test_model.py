@@ -63,3 +63,15 @@ def test_use_gpu_same_result(t, y, theta):
         pytest.skip("skipping CUDA tests")
     model_gpu = GPUSpotModel(t, y, 2)
     assert np.allclose(y, model_gpu.predict(t, theta)[0].get())
+
+
+def test_loglike(model, theta):
+    logL = model.loglike(theta)
+    assert np.isfinite(logL)
+
+
+def test_float32_model():
+    t = np.arange(0, 30, 0.02).astype(np.float32)
+    y = np.ones_like(t)
+    model = SpotModel(t, y, 1)
+    assert model.y.dtype == np.float32
