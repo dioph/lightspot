@@ -6,7 +6,7 @@ from dynesty import DynamicNestedSampler
 import dynesty.pool as dypool
 from dynesty.utils import merge_runs
 import numpy as np
-from ultranest import ReactiveNestedSampler, stepsampler
+from ultranest import ReactiveNestedSampler, popstepsampler, stepsampler
 from ultranest.plot import PredictionBand
 
 from .macula import macula
@@ -190,8 +190,9 @@ class AbstractModel(object):
         # TODO
         pass
 
-    def nested_sample(self, resume=True, log_dir=None, n_slice=0, **kwargs):
-        logl = lambda cube: self.loglike(self.prior_transform(cube))
+    def nested_sample(self, resume=True, log_dir=None, n_slice=0, popsize=0, **kwargs):
+        def logl(cube):
+            return self.loglike(self.prior_transform(cube))
 
         self.sampler = ReactiveNestedSampler(
             self.fit_names,
@@ -201,8 +202,12 @@ class AbstractModel(object):
             wrapped_params=self.wrap,
             vectorized=True,
         )
-        if n_slice > 0:
+        if popsize == 0 and n_slice > 0:
             self.sampler.stepsampler = stepsampler.RegionSliceSampler(nsteps=n_slice)
+        if popsize > 0 and n_slice > 0:
+            self.sampler.stepsampler = popstepsampler.PopulationSliceSampler(
+                popsize, n_slice, popstepsampler.generate_region_oriented_direction
+            )
         results = self.sampler.run(**kwargs)
         results = self._post_processing(results)
         self.sampler.run_sequence["samples"] = results["weighted_samples"]["points"]
