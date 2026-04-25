@@ -30,8 +30,8 @@ install_requires = [
 
 extras_require = {
     "cuda": [
-        "cupy",
-        "numba",
+        "cupy-cuda13x[ctk]",
+        "numba-cuda[cu13]",
     ],
     "docs": [
         "jupyter >= 1.0",
@@ -40,7 +40,7 @@ extras_require = {
         "pydata-sphinx-theme",
     ],
     "test": [
-        "black == 22.3.0",
+        "black == 26.1.0",
         "flake8",
         "isort",
         "pytest",
@@ -73,9 +73,10 @@ setuptools.setup(
     setup_requires=setup_requires,
     cmdclass={"build_ext": build_ext},
     classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
+        "Development Status :: 4 - Beta",
         "Intended Audience :: Science/Research",
+        "License :: OSI Approved :: MIT License",
+        "Programming Language :: Python :: 3",
     ],
+    python_requires=">=3.8",
 )
