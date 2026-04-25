@@ -342,7 +342,7 @@ def _macula(t, theta, tstart, tend, fmod):
     gpu = cuda.get_current_device()
     numSM = gpu.MULTIPROCESSOR_COUNT
     threadsperblock = (4, 64)
-    blockspergrid = (numSM, 20)
+    blockspergrid = (numSM * 2, 40)
 
     kernel[blockspergrid, threadsperblock](t, theta, tstart, tend, fmod)
     cuda.synchronize()
