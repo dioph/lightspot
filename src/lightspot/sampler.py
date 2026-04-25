@@ -75,7 +75,7 @@ class AbstractModel(object):
             return self.defaults
         # check if all given keys are valid
         for key in priors.keys():
-            if not all(np.in1d(key, self.param_names)):
+            if not np.all(np.isin(key, self.param_names)):
                 raise KeyError(key)
         # TODO: check if all given keys are unique
         # check if the number of outputs is conserved
