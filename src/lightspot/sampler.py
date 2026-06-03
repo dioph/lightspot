@@ -349,7 +349,7 @@ class SpotModel(AbstractModel):
 
     def loglike(self, theta):
         eff_var = self.eff_var(theta)
-        norm_c = -(self.nlog2pi - np.log(eff_var).sum(axis=1)) / 2
+        norm_c = -(self.nlog2pi + np.log(eff_var).sum(axis=1)) / 2
         return norm_c - self.chi(theta) / 2
 
 
@@ -411,5 +411,5 @@ class SimpleSpotModel(AbstractModel):
 
     def loglike(self, theta):
         eff_var = self.eff_var(theta)
-        norm_c = -(self.nlog2pi - np.log(eff_var).sum(axis=1)) / 2
+        norm_c = -(self.nlog2pi + np.log(eff_var).sum(axis=1)) / 2
         return norm_c - self.chi(theta) / 2

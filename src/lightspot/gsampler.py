@@ -72,7 +72,7 @@ class GPUSpotModel(SpotModel):
         theta_params = cp.atleast_2d(theta)[..., :-1].astype(self._dtype)
         jitter = theta_gpu[..., -1]
         eff_var = self.dy_gpu**2 + jitter[:, None] ** 2
-        norm_c = -(self.nlog2pi - cp.log(eff_var).sum(axis=1)) / 2
+        norm_c = -(self.nlog2pi + cp.log(eff_var).sum(axis=1)) / 2
         if theta_params.shape[1] != (self.jmax - 1):
             raise ValueError("Parameter vector with wrong size.")
         yf = self.func(self.t_gpu, theta_params, self.tstart_gpu, self.tend_gpu)
